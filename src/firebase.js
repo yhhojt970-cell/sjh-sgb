@@ -16,3 +16,16 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 
+let secondaryApp = null
+
+export const getSecondaryFirebase = () => {
+  if (!secondaryApp) {
+    secondaryApp = initializeApp(firebaseConfig, 'secondary-auth-app')
+  }
+
+  return {
+    app: secondaryApp,
+    auth: getAuth(secondaryApp),
+    db: getFirestore(secondaryApp)
+  }
+}
