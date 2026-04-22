@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DndContext, closestCenter } from '@dnd-kit/core'
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid } from 'lucide-react'
@@ -50,6 +50,13 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [selectedKids, setSelectedKids] = useState([activeKidId])
 
   const ICONS = ['Book', 'Music', 'Calculator', 'Languages', 'Palette', 'Activity', 'Coffee', 'User', 'Star']
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8
+      }
+    })
+  )
 
   const kidSyncRef = useRef({ kidId: null, json: '', ready: false })
   const logsSyncRef = useRef({ json: '', ready: false })
@@ -168,7 +175,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const handleDragEnd = (event) => {
     const { active, over } = event
-    if (over && active?.id?.startsWith('palette-')) {
+    if (over?.id?.toString().startsWith('hour-') && active?.id?.startsWith('palette-')) {
       const subject = active.data.current
       if (!subject) return
       const hour = over.data.current.hour
@@ -439,7 +446,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   return (
-    <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         <header className="glass" style={{ padding: '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>

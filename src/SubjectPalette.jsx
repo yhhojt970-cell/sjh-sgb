@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { Check, Edit2, Trash2, X } from 'lucide-react'
 
 const DEFAULT_SUBJECTS = [
   { name: '피아노', color: '#8b5cf6' },
@@ -10,11 +11,19 @@ const DEFAULT_SUBJECTS = [
   { name: '독서', color: '#ef4444' }
 ]
 
-function PaletteItem({ subject }) {
+function PaletteItem({ subject, onSave, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `palette-${subject.name}`,
     data: subject
   })
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftName, setDraftName] = useState(subject.name)
+  const [draftColor, setDraftColor] = useState(subject.color)
+
+  useEffect(() => {
+    setDraftName(subject.name)
+    setDraftColor(subject.color)
+  }, [subject.name, subject.color])
 
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -30,9 +39,80 @@ function PaletteItem({ subject }) {
     fontSize: '13px'
   }
 
+  if (isEditing) {
+    return (
+      <div style={{ ...style, cursor: 'default', display: 'grid', gap: '8px' }}>
+        <input
+          className="input-field"
+          style={{ padding: '8px 10px', fontSize: '12px' }}
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          placeholder="과목 이름"
+        />
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <input
+            type="color"
+            value={draftColor}
+            onChange={(e) => setDraftColor(e.target.value)}
+            style={{ width: '42px', height: '34px', border: 'none', background: 'none' }}
+          />
+          <button
+            type="button"
+            style={{ border: 'none', background: 'rgba(66, 201, 155, 0.14)', color: 'var(--accent)', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer' }}
+            onClick={() => {
+              const nextName = draftName.trim()
+              if (!nextName) return
+              onSave(subject.name, { ...subject, name: nextName, color: draftColor })
+              setIsEditing(false)
+            }}
+          >
+            <Check size={14} />
+          </button>
+          <button
+            type="button"
+            style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: 'var(--text-muted)', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer' }}
+            onClick={() => {
+              setDraftName(subject.name)
+              setDraftColor(subject.color)
+              setIsEditing(false)
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
-      {subject.name}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <span>{subject.name}</span>
+        <span style={{ display: 'flex', gap: '6px' }}>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsEditing(true)
+            }}
+            style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: 'var(--text-muted)', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}
+          >
+            <Edit2 size={12} />
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(subject.name)
+            }}
+            style={{ border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
+      </div>
     </div>
   )
 }
@@ -56,9 +136,20 @@ export function SubjectPalette({ cloud }) {
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState('#8b5cf6')
 
-  const persist = (next) => {
-    setSubjects(next)
-    if (!isCloud) localStorage.setItem('kid_app_subjects', JSON.stringify(next))
+  const persist = (nextOrUpdater) => {
+    setSubjects((prev) => {
+      const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev || []) : nextOrUpdater
+      if (!isCloud) localStorage.setItem('kid_app_subjects', JSON.stringify(next))
+      return next
+    })
+  }
+
+  const updateSubject = (prevName, nextSubject) => {
+    persist((subjects || []).map((item) => (item.name === prevName ? nextSubject : item)))
+  }
+
+  const deleteSubject = (name) => {
+    persist((subjects || []).filter((item) => item.name !== name))
   }
 
   useEffect(() => {
@@ -104,7 +195,7 @@ export function SubjectPalette({ cloud }) {
 
       <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
         {list.map((s) => (
-          <PaletteItem key={s.name} subject={s} />
+          <PaletteItem key={s.name} subject={s} onSave={updateSubject} onDelete={deleteSubject} />
         ))}
       </div>
 
