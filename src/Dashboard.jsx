@@ -60,6 +60,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const kidSyncRef = useRef({ kidId: null, json: '', ready: false })
   const logsSyncRef = useRef({ json: '', ready: false })
+  const latestKidStateRef = useRef({ tasks: [], goals: [], wishes: [] })
 
   useEffect(() => {
     if (activeKidId) {
@@ -126,24 +127,63 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   useEffect(() => { if(!isCloud) localStorage.setItem('kid_app_logs', JSON.stringify(logs)) }, [logs, isCloud])
   useEffect(() => { if(!isCloud && activeKidId) localStorage.setItem(`goals_${activeKidId}`, JSON.stringify(goals)) }, [goals, activeKidId, isCloud])
   useEffect(() => { if(!isCloud && activeKidId) localStorage.setItem(`wishes_${activeKidId}`, JSON.stringify(wishes)) }, [wishes, activeKidId, isCloud])
-
   useEffect(() => {
+    latestKidStateRef.current = {
+      tasks: tasks || [],
+      goals: goals || [],
+      wishes: wishes || []
+    }
+  }, [tasks, goals, wishes])
+
+  const persistActiveKidState = async (overrides = {}) => {
     if (!isCloud || !activeKidId) return
-    if (!kidSyncRef.current.ready) return
-    if (kidSyncRef.current.kidId !== activeKidId) return
 
-    const payload = { tasks: tasks || [], goals: goals || [], wishes: wishes || [] }
+    const payload = {
+      tasks: overrides.tasks ?? latestKidStateRef.current.tasks ?? [],
+      goals: overrides.goals ?? latestKidStateRef.current.goals ?? [],
+      wishes: overrides.wishes ?? latestKidStateRef.current.wishes ?? []
+    }
     const json = JSON.stringify(payload)
-    if (json === kidSyncRef.current.json) return
 
-    const t = setTimeout(async () => {
-      const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
-      await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true })
-      kidSyncRef.current = { kidId: activeKidId, json, ready: true }
-    }, 500)
+    kidSyncRef.current = { kidId: activeKidId, json, ready: true }
+    latestKidStateRef.current = payload
 
-    return () => clearTimeout(t)
-  }, [isCloud, cloud?.db, cloud?.householdId, activeKidId, tasks, goals, wishes])
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
+    await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true })
+  }
+
+  const applyTaskChange = (updater) => {
+    setTasks((prev) => {
+      const next = typeof updater === 'function' ? updater(prev || []) : updater
+      latestKidStateRef.current = { ...latestKidStateRef.current, tasks: next }
+      if (isCloud) {
+        persistActiveKidState({ tasks: next }).catch(console.error)
+      }
+      return next
+    })
+  }
+
+  const applyGoalsChange = (updater) => {
+    setGoals((prev) => {
+      const next = typeof updater === 'function' ? updater(prev || []) : updater
+      latestKidStateRef.current = { ...latestKidStateRef.current, goals: next }
+      if (isCloud) {
+        persistActiveKidState({ goals: next }).catch(console.error)
+      }
+      return next
+    })
+  }
+
+  const applyWishesChange = (updater) => {
+    setWishes((prev) => {
+      const next = typeof updater === 'function' ? updater(prev || []) : updater
+      latestKidStateRef.current = { ...latestKidStateRef.current, wishes: next }
+      if (isCloud) {
+        persistActiveKidState({ wishes: next }).catch(console.error)
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!isCloud) return
@@ -206,7 +246,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     }
 
     if (targetKidId === activeKidId && targetDate === format(selectedDate, 'yyyy-MM-dd')) {
-      setTasks(prev => [...(prev || []), newTask])
+      applyTaskChange(prev => [...(prev || []), newTask])
     } else {
       if (!isCloud) {
         // Update specific kid's localStorage for the specific date
@@ -233,7 +273,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
       // If we are currently viewing the same kid but different date, keep UI state in sync.
       if (targetKidId === activeKidId) {
-        setTasks(prev => [...prev, newTask])
+        applyTaskChange(prev => [...(prev || []), newTask])
       }
     }
     
@@ -309,7 +349,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   }
 
   const updateTask = (taskId, updates) => {
-    setTasks(prev => (prev || []).map(t => {
+    applyTaskChange(prev => (prev || []).map(t => {
       if (t.id === taskId) {
         const newT = { ...t, ...updates }
         
@@ -337,7 +377,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const deleteTask = (taskId) => {
     const task = (tasks || []).find(t => t.id === taskId)
     if (task) {
-      setTasks(prev => (prev || []).filter(t => t.id !== taskId))
+      applyTaskChange(prev => (prev || []).filter(t => t.id !== taskId))
       addLog('삭제', `${task.name}`)
     }
   }
@@ -358,7 +398,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       actualEndTime: null
     }))
     
-    setTasks(prev => [...prev, ...newTasks])
+    applyTaskChange(prev => [...(prev || []), ...newTasks])
     alert(`${tomorrowStr}로 계획이 복사되었습니다!`)
     addLog('계획 복사', `${todayStr} -> ${tomorrowStr}`)
   }
@@ -366,7 +406,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const resetDay = () => {
     if (confirm('오늘의 모든 계획을 삭제하고 초기화할까요?')) {
       const todayStr = format(selectedDate, 'yyyy-MM-dd')
-      setTasks(prev => (prev || []).filter(t => t.date !== todayStr))
+      applyTaskChange(prev => (prev || []).filter(t => t.date !== todayStr))
       addLog('초기화', `${todayStr} 시간표 초기화`)
     }
   }
@@ -497,13 +537,13 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} /></div>
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}><Gift size={20} style={{ color: 'var(--secondary)' }} /><h3 style={{ fontSize: '16px', fontWeight: '700' }}>나의 소원 리스트</h3></div>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ setWishes(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Plus size={16}/></button></div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ applyWishesChange(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Plus size={16}/></button></div>
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(wishes || []).map(w => (
                   <li key={w.id} style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.02)', padding: '8px', borderRadius: '8px' }}>
                     {w.granted ? <CheckCircle2 size={14} color="var(--accent)"/> : <Star size={14} color="#ddd"/>}
                     <span style={{ textDecoration: w.granted ? 'line-through' : 'none', opacity: w.granted ? 0.5 : 1 }}>{w.text}</span>
-                    {isAdmin && !w.granted && <button onClick={() => setWishes(prev => (prev || []).map(i => i.id === w.id ? {...i, granted: true} : i))} style={{ marginLeft: 'auto', fontSize: '10px', background: 'var(--accent)', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}>승인</button>}
+                    {isAdmin && !w.granted && <button onClick={() => applyWishesChange(prev => (prev || []).map(i => i.id === w.id ? {...i, granted: true} : i))} style={{ marginLeft: 'auto', fontSize: '10px', background: 'var(--accent)', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}>승인</button>}
                   </li>
                 ))}
               </ul>
@@ -626,8 +666,8 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             ) : showGoals ? (
               <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>🎯 이번 주 목표</h2>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}><input className="input-field" placeholder="목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ setGoals(prev => [...(prev || []), {id: Date.now(), text: newGoal, done: false}]); setNewGoal(''); } }} className="btn-primary">추가</button></div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>{(goals || []).map(g => (<div key={g.id} onClick={() => setGoals(prev => (prev || []).map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '15px', background: g.done ? 'rgba(52, 211, 153, 0.1)' : 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>{g.done ? <CheckCircle2 color="var(--accent)"/> : <div style={{ width: '24px', height: '24px', border: '2px solid #ddd', borderRadius: '50%' }}/>}<span style={{ fontWeight: '600', textDecoration: g.done ? 'line-through' : 'none' }}>{g.text}</span></div>))}</div>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}><input className="input-field" placeholder="목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...(prev || []), {id: Date.now(), text: newGoal, done: false}]); setNewGoal(''); } }} className="btn-primary">추가</button></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>{(goals || []).map(g => (<div key={g.id} onClick={() => applyGoalsChange(prev => (prev || []).map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '15px', background: g.done ? 'rgba(52, 211, 153, 0.1)' : 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>{g.done ? <CheckCircle2 color="var(--accent)"/> : <div style={{ width: '24px', height: '24px', border: '2px solid #ddd', borderRadius: '50%' }}/>}<span style={{ fontWeight: '600', textDecoration: g.done ? 'line-through' : 'none' }}>{g.text}</span></div>))}</div>
               </div>
             ) : (
               <TimeGrid tasks={currentTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} />
