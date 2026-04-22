@@ -7,7 +7,7 @@ import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay 
 import { ko } from 'date-fns/locale'
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 
-function Dashboard({ user, onLogout, onUpdateUser, allUsers, cloud }) {
+function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, cloud }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const [activeKidId, setActiveKidId] = useState(user?.id || '')
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -32,6 +32,11 @@ function Dashboard({ user, onLogout, onUpdateUser, allUsers, cloud }) {
   
   const [newGoal, setNewGoal] = useState('')
   const [newWish, setNewWish] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [nextPassword, setNextPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
+  const [passwordBusy, setPasswordBusy] = useState(false)
 
   const [className, setClassName] = useState('')
   const [classStartTime, setClassStartTime] = useState('09:00')
@@ -354,6 +359,33 @@ function Dashboard({ user, onLogout, onUpdateUser, allUsers, cloud }) {
     }
   }
 
+  const submitPasswordChange = async () => {
+    if (!onChangePassword) return
+    if (!currentPassword || !nextPassword || !confirmPassword) {
+      setPasswordMessage('세 칸을 모두 입력해 주세요.')
+      return
+    }
+    if (nextPassword.length < 6) {
+      setPasswordMessage('새 비밀번호는 6자 이상으로 해 주세요.')
+      return
+    }
+    if (nextPassword !== confirmPassword) {
+      setPasswordMessage('새 비밀번호 확인이 맞지 않아요.')
+      return
+    }
+
+    setPasswordBusy(true)
+    const result = await onChangePassword(currentPassword, nextPassword)
+    setPasswordBusy(false)
+    setPasswordMessage(result.message)
+
+    if (result.ok) {
+      setCurrentPassword('')
+      setNextPassword('')
+      setConfirmPassword('')
+    }
+  }
+
   const currentTasks = useMemo(() => {
     try {
       if (!selectedDate || !(selectedDate instanceof Date)) return []
@@ -409,7 +441,7 @@ function Dashboard({ user, onLogout, onUpdateUser, allUsers, cloud }) {
             {isAdmin && <button onClick={() => setShowClassManager(!showClassManager)} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '5px' }}><LayoutGrid size={20}/> <span style={{fontSize: '13px', fontWeight: '700'}}>수업 관리</span></button>}
             <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); setShowClassManager(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={20}/></button>
             {isAdmin && <button onClick={() => { setShowLogs(!showLogs); setShowGoals(false); setShowSettings(false); setShowClassManager(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}><ClipboardList size={20}/></button>}
-            <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); setShowClassManager(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}><Settings size={20} /></button>
+            <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); setShowClassManager(false); setPasswordMessage(''); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}><Settings size={20} /></button>
             <button onClick={onLogout} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={20} /></button>
           </div>
         </header>
@@ -509,6 +541,50 @@ function Dashboard({ user, onLogout, onUpdateUser, allUsers, cloud }) {
                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
                     💡 기본 5개 열(이름, 요일, 과목, 시간, 분) + 선택 3개 열(메모, 시작일, 종료일)도 지원해요. 메모에 띄어쓰기가 있으면 Tab으로 구분해서 붙여넣어 주세요.
                  </div>
+              </div>
+            ) : showSettings ? (
+              <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '10px' }}>내 비밀번호 바꾸기</h2>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                  지금 로그인한 사람만 자기 비밀번호를 바꿀 수 있어요.
+                </p>
+
+                <div style={{ maxWidth: '460px', display: 'grid', gap: '12px' }}>
+                  <input
+                    className="input-field"
+                    type="password"
+                    placeholder="현재 비밀번호"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                  <input
+                    className="input-field"
+                    type="password"
+                    placeholder="새 비밀번호"
+                    value={nextPassword}
+                    onChange={(e) => setNextPassword(e.target.value)}
+                  />
+                  <input
+                    className="input-field"
+                    type="password"
+                    placeholder="새 비밀번호 다시 입력"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  {passwordMessage && (
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: passwordMessage.includes('바뀌었어요') ? 'var(--accent)' : '#ef4444' }}>
+                      {passwordMessage}
+                    </div>
+                  )}
+                  <button
+                    className="btn-primary"
+                    style={{ width: '220px', opacity: passwordBusy ? 0.7 : 1 }}
+                    disabled={passwordBusy}
+                    onClick={submitPasswordChange}
+                  >
+                    {passwordBusy ? '바꾸는 중...' : '비밀번호 변경하기'}
+                  </button>
+                </div>
               </div>
             ) : showLogs ? (
               <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
