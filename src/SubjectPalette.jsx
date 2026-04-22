@@ -14,7 +14,10 @@ const DEFAULT_SUBJECTS = [
 function PaletteItem({ subject, onSave, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `palette-${subject.name}`,
-    data: subject
+    data: {
+      type: 'palette',
+      subject
+    }
   })
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(subject.name)

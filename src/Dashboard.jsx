@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid } from 'lucide-react'
@@ -48,6 +48,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [classEndDate, setClassEndDate] = useState('')
   const [bulkInput, setBulkInput] = useState('')
   const [selectedKids, setSelectedKids] = useState([activeKidId])
+  const [activeDragItem, setActiveDragItem] = useState(null)
 
   const ICONS = ['Book', 'Music', 'Calculator', 'Languages', 'Palette', 'Activity', 'Coffee', 'User', 'Star']
   const sensors = useSensors(
@@ -213,15 +214,65 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     setLogs(prev => [newLog, ...(prev || [])].slice(0, 100))
   }
 
+  const renderDragPreview = () => {
+    if (!activeDragItem) return null
+
+    if (activeDragItem.type === 'palette') {
+      const subject = activeDragItem.subject
+      return (
+        <div className="drag-preview-card" style={{ borderLeft: `6px solid ${subject.color}` }}>
+          <div className="drag-preview-badge">끌어다 놓기</div>
+          <div className="drag-preview-title">{subject.name}</div>
+          <div className="drag-preview-time">원하는 시간 칸 위에 놓으면 추가돼요</div>
+        </div>
+      )
+    }
+
+    if (activeDragItem.type === 'task') {
+      const task = activeDragItem.task
+      return (
+        <div className="drag-preview-card" style={{ borderLeft: `6px solid ${task.color}` }}>
+          <div className="drag-preview-badge">시간표 이동</div>
+          <div className="drag-preview-title">{task.name}</div>
+          <div className="drag-preview-time">{task.startTime} · 다른 시간 칸으로 옮길 수 있어요</div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  const handleDragStart = (event) => {
+    const dragData = event.active?.data?.current
+    if (!dragData) return
+
+    if (dragData.type === 'palette') {
+      setActiveDragItem({ type: 'palette', subject: dragData.subject })
+    } else if (dragData.type === 'task') {
+      setActiveDragItem({ type: 'task', task: dragData.task })
+    }
+  }
+
   const handleDragEnd = (event) => {
     const { active, over } = event
-    if (over?.id?.toString().startsWith('hour-') && active?.id?.startsWith('palette-')) {
-      const subject = active.data.current
-      if (!subject) return
+    const dragData = active?.data?.current
+
+    if (over?.id?.toString().startsWith('hour-') && dragData?.type === 'palette') {
+      const subject = dragData.subject
+      if (!subject) {
+        setActiveDragItem(null)
+        return
+      }
       const hour = over.data.current.hour
       const startTime = typeof hour === 'number' ? `${hour.toString().padStart(2, '0')}:00` : hour
       addTask(subject.name, subject.color, startTime, 50, 'study')
+    } else if (over?.id?.toString().startsWith('hour-') && dragData?.type === 'task') {
+      const hour = over.data.current.hour
+      const startTime = typeof hour === 'number' ? `${hour.toString().padStart(2, '0')}:00` : hour
+      updateTask(dragData.task.id, { startTime })
     }
+
+    setActiveDragItem(null)
   }
 
   const addTask = (name, color, startTime, duration, type, icon = 'Book', targetKidId = activeKidId, targetDate = format(selectedDate, 'yyyy-MM-dd'), extra = {}) => {
@@ -495,7 +546,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         <header className="glass" style={{ padding: '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -546,7 +597,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} /></div>
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}><Gift size={20} style={{ color: 'var(--secondary)' }} /><h3 style={{ fontSize: '16px', fontWeight: '700' }}>나의 소원 리스트</h3></div>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ applyWishesChange(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} style={{ background: 'var(--secondary)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Plus size={16}/></button></div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ applyWishesChange(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} className="icon-add-button" style={{ background: 'var(--secondary)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer' }}><Plus size={16}/></button></div>
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {(wishes || []).map(w => (
                   <li key={w.id} style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.02)', padding: '8px', borderRadius: '8px' }}>
@@ -675,7 +726,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             ) : showGoals ? (
               <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>🎯 이번 주 목표</h2>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}><input className="input-field" placeholder="목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...(prev || []), {id: Date.now(), text: newGoal, done: false}]); setNewGoal(''); } }} className="btn-primary">추가</button></div>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}><input className="input-field" placeholder="목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...(prev || []), {id: Date.now(), text: newGoal, done: false}]); setNewGoal(''); } }} className="btn-primary" style={{ minWidth: '74px' }}>추가</button></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>{(goals || []).map(g => (<div key={g.id} onClick={() => applyGoalsChange(prev => (prev || []).map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '15px', background: g.done ? 'rgba(52, 211, 153, 0.1)' : 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>{g.done ? <CheckCircle2 color="var(--accent)"/> : <div style={{ width: '24px', height: '24px', border: '2px solid #ddd', borderRadius: '50%' }}/>}<span style={{ fontWeight: '600', textDecoration: g.done ? 'line-through' : 'none' }}>{g.text}</span></div>))}</div>
               </div>
             ) : (
@@ -684,6 +735,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </main>
         </div>
       </div>
+      <DragOverlay>{renderDragPreview()}</DragOverlay>
     </DndContext>
   )
 }

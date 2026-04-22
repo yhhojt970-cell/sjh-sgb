@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
-import { useDroppable } from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy } from 'lucide-react'
 
 const ICON_MAP = {
@@ -24,7 +24,11 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
         display: 'flex',
         minHeight: '100px',
         borderBottom: '1px solid rgba(0,0,0,0.05)',
-        background: isOver ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
+        background: isOver
+          ? 'rgba(139, 92, 246, 0.08)'
+          : hourTasks.length
+            ? 'transparent'
+            : 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255, 244, 248, 0.9))',
         transition: 'background 0.2s ease'
       }}
     >
@@ -58,8 +62,16 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
   const [isEditing, setIsEditing] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
   const [editData, setEditData] = useState({ ...task })
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `task-${task.id}`,
+    data: {
+      type: 'task',
+      task
+    }
+  })
   
   const isFixed = task.type === 'class'
+  const hasNotes = Boolean(task.notes)
   
   const handleStart = () => {
     onUpdate(task.id, { actualStartTime: format(new Date(), 'HH:mm') })
@@ -108,7 +120,7 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
   }
 
   return (
-    <div className="glass animate-fade-in" style={{
+    <div ref={setNodeRef} className="glass animate-fade-in" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
       padding: '14px',
       borderRadius: 'var(--radius-md)',
       background: isFixed ? 'rgba(139, 92, 246, 0.08)' : 'white',
@@ -116,9 +128,11 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
       minWidth: '280px',
       boxShadow: 'var(--shadow)',
       position: 'relative',
-      opacity: task.completed ? 0.7 : 1,
+      opacity: isDragging ? 0.35 : task.completed ? 0.7 : 1,
       border: isFixed ? '1px dashed var(--primary-light)' : '1px solid rgba(255,255,255,0.5)',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.3s ease',
+      cursor: isEditing ? 'default' : 'grab',
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined
     }}>
       {isFixed && (
         <div style={{ position: 'absolute', top: '-10px', right: '10px', background: 'var(--primary)', color: 'white', fontSize: '10px', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', zIndex: 10 }}>
@@ -164,14 +178,14 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <div 
-              onClick={() => setShowNotes(!showNotes)}
-              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+              onClick={() => hasNotes && setShowNotes(!showNotes)}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: hasNotes ? 'pointer' : 'default' }}
             >
               {task.icon && ICON_MAP[task.icon] ? React.createElement(ICON_MAP[task.icon], { size: 18, style: { color: task.color } }) : <Circle size={18} />}
-              <span style={{ fontWeight: '800', fontSize: '16px', color: 'var(--text-main)', borderBottom: task.notes ? '2px dashed var(--primary-light)' : 'none' }}>
+              <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--text-main)', borderBottom: hasNotes ? '2px dashed var(--primary-light)' : 'none' }}>
                 {task.name}
               </span>
-              {task.notes && <Info size={14} style={{ color: 'var(--primary)', opacity: 0.6 }} />}
+              {hasNotes && <Info size={14} style={{ color: 'var(--primary)', opacity: 0.6 }} />}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               {canEnterEdit && (
@@ -187,7 +201,7 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
             </div>
           </div>
 
-          {showNotes && (
+          {hasNotes && showNotes && (
             <div className="animate-fade-in" style={{ 
               background: 'rgba(139, 92, 246, 0.05)', 
               padding: '10px', 
@@ -202,13 +216,13 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                    <ExternalLink size={12} /> 수업 메모
                  </span>
-                 {task.notes && (
+                 {hasNotes && (
                    <button onClick={copyNotes} style={{ border: 'none', background: 'rgba(0,0,0,0.06)', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                      <Copy size={12} /> 복사
                    </button>
                  )}
                </div>
-               {task.notes ? task.notes : <span style={{ color: 'var(--text-muted)' }}>메모 없음</span>}
+               {task.notes}
             </div>
           )}
 
