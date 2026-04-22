@@ -5,7 +5,7 @@ import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 
 function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, cloud }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
@@ -210,9 +210,14 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
         ;(async () => {
           try {
             const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', targetKidId)
-            const snap = await getDoc(ref)
-            const existing = Array.isArray(snap.data()?.tasks) ? snap.data().tasks : []
-            await setDoc(ref, { tasks: [...existing, newTask], updatedAt: serverTimestamp() }, { merge: true })
+            await setDoc(
+              ref,
+              {
+                tasks: arrayUnion(newTask),
+                updatedAt: serverTimestamp()
+              },
+              { merge: true }
+            )
           } catch (e) {
             console.error(e)
           }
