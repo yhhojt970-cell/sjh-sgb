@@ -3,7 +3,7 @@ import { DndContext, closestCenter } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid } from 'lucide-react'
-import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay } from 'date-fns'
+import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 
@@ -172,12 +172,18 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       const subject = active.data.current
       if (!subject) return
       const hour = over.data.current.hour
-      addTask(subject.name, subject.color, hour, 50, 'study')
+      const startTime = typeof hour === 'number' ? `${hour.toString().padStart(2, '0')}:00` : hour
+      addTask(subject.name, subject.color, startTime, 50, 'study')
     }
   }
 
   const addTask = (name, color, startTime, duration, type, icon = 'Book', targetKidId = activeKidId, targetDate = format(selectedDate, 'yyyy-MM-dd'), extra = {}) => {
-    const [hour, min] = startTime.split(':').map(Number)
+    const safeStartTime =
+      typeof startTime === 'string' && startTime.includes(':')
+        ? startTime
+        : `${String(startTime).padStart(2, '0')}:00`
+
+    const [hour, min] = safeStartTime.split(':').map(Number)
     const totalMinutes = hour * 60 + min + duration
     const endH = Math.floor(totalMinutes / 60) % 24
     const endM = totalMinutes % 60
@@ -185,9 +191,10 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
     const newTask = {
       id: Math.random().toString(36).substr(2, 9),
-      name, color, startTime, expectedEndTime, duration, type, icon,
+      name, color, startTime: safeStartTime, expectedEndTime, duration, type, icon,
       completed: false,
       date: targetDate,
+      ...(type === 'class' ? { weekday: extra.weekday ?? getDay(parseISO(targetDate)) } : {}),
       ...extra
     }
 
@@ -268,6 +275,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
            if (notes) extra.notes = notes
            if (startDate) extra.startDate = startDate
            if (endDate) extra.endDate = endDate
+           extra.weekday = getDay(parseISO(targetDate))
 
            addTask(subject, '#8b5cf6', time, parseInt(duration) || 50, 'class', 'Book', kidId, targetDate, extra)
            count++
@@ -279,8 +287,10 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       alert(`${count}개의 수업이 등록되었습니다!`)
       setBulkInput('')
       setShowClassManager(false)
-      // Refresh current tasks if something was added to the currently viewed date/kid
-      setTasks(loadState(`tasks_${activeKidId}`, []))
+      // In cloud mode the Firestore listener will refresh tasks; local mode still reads from storage.
+      if (!isCloud) {
+        setTasks(loadState(`tasks_${activeKidId}`, []))
+      }
     } else {
       alert('올바른 형식이 아닙니다. [이름 요일 과목 시간 분 (메모) (시작일) (종료일)] 순서로 입력해 주세요.')
     }
@@ -391,10 +401,17 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       if (!selectedDate || !(selectedDate instanceof Date)) return []
       const dateStr = format(selectedDate, 'yyyy-MM-dd')
       const targetTime = startOfDay(selectedDate).getTime()
+      const selectedWeekday = getDay(selectedDate)
 
       return (tasks || []).filter(t => {
-        // Basic date match
-        if (t.date !== dateStr) return false
+        const isRecurringClass = t.type === 'class'
+        const taskWeekday = t.weekday ?? (t.date ? getDay(parseISO(t.date)) : null)
+
+        if (isRecurringClass) {
+          if (taskWeekday !== selectedWeekday) return false
+        } else if (t.date !== dateStr) {
+          return false
+        }
         
         // Optional date range match
         if (t.startDate) {
