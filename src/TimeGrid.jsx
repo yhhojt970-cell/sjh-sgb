@@ -262,7 +262,6 @@ function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Clock size={20} style={{ color: 'var(--primary)' }} />
-          <h2 style={{ fontSize: '18px', fontWeight: '700' }}>오늘의 시간표</h2>
         </div>
         {tasks.length === 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'var(--text-muted)' }}>

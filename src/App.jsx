@@ -18,6 +18,7 @@ const ACCOUNTS = {
   yhhojt970: {
     name: '엄마',
     displayName: '엄마',
+    mascot: '🌷',
     role: 'admin',
     badge: '관리자',
     accent: '#ff8fb1',
@@ -26,6 +27,7 @@ const ACCOUNTS = {
   sjh150717: {
     name: '지희',
     displayName: '손지희',
+    mascot: '🫧',
     role: 'child',
     badge: '지희',
     accent: '#7c9cff',
@@ -34,6 +36,7 @@ const ACCOUNTS = {
   sgb170101: {
     name: '가빈',
     displayName: '손가빈',
+    mascot: '🐱',
     role: 'child',
     badge: '가빈',
     accent: '#42c99b',
@@ -262,6 +265,7 @@ export default function App() {
                     setMessage('')
                   }}
                 >
+                  <div className="account-mascot">{info.mascot}</div>
                   <div className="account-badge" style={{ color: info.accent }}>
                     {info.badge}
                   </div>

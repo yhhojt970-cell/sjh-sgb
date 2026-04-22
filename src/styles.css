@@ -133,6 +133,11 @@ body{
   border-color: rgba(255,255,255,0.98);
 }
 
+.account-mascot{
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
 .account-badge{
   font-size: 12px;
   font-weight: 900;

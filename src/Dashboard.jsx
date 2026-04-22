@@ -448,12 +448,12 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
-        <header className="glass" style={{ padding: '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+        <header className="glass" style={{ padding: '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '15px' }}><Star size={24} /></div>
             <div>
-              <h1 style={{ fontSize: '20px', fontWeight: '800' }}>{activeKidId}의 {isAdmin ? '스케줄 관리' : '행복한 하루'}</h1>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
+              <h1 style={{ fontSize: '18px', fontWeight: '800' }}>{activeKidId}의 {isAdmin ? '스케줄 관리' : '행복한 하루'}</h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -481,6 +481,9 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
               <button onClick={resetDay} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#ef4444' }}><Trash2 size={16}/> 초기화</button>
            </div>
            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', minWidth: '120px', textAlign: 'center' }}>
+                오늘의 시간표
+              </div>
               <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="glass" style={{ padding: '8px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
               <div style={{ display: 'flex', gap: '5px' }}>
                 {weekDays.map(day => (<button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '10px 14px', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: '55px' }}><div style={{ fontSize: '10px', opacity: 0.8 }}>{format(day, 'eee', { locale: ko })}</div><div>{format(day, 'd')}</div></button>))}
