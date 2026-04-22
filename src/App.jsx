@@ -17,20 +17,23 @@ const HOUSEHOLD_ID = 'SJH-SGB'
 const ACCOUNTS = {
   yhhojt970: {
     name: '엄마',
+    displayName: '엄마',
     role: 'admin',
     badge: '관리자',
     accent: '#ff8fb1',
     background: 'linear-gradient(135deg, #ffe4ec, #fff7d6)'
   },
   sjh150717: {
-    name: '손지희',
+    name: '지희',
+    displayName: '손지희',
     role: 'child',
     badge: '지희',
     accent: '#7c9cff',
     background: 'linear-gradient(135deg, #e8f0ff, #fff0fb)'
   },
   sgb170101: {
-    name: '손가빈',
+    name: '가빈',
+    displayName: '손가빈',
     role: 'child',
     badge: '가빈',
     accent: '#42c99b',
@@ -262,7 +265,7 @@ export default function App() {
                   <div className="account-badge" style={{ color: info.accent }}>
                     {info.badge}
                   </div>
-                  <div className="account-name">{info.name}</div>
+                  <div className="account-name">{info.displayName || info.name}</div>
                   <div className="account-id">{id}</div>
                 </button>
               ))}
@@ -295,7 +298,7 @@ export default function App() {
 
                 {selectedAccount && (
                   <div className="login-hint">
-                    선택한 계정: <strong>{selectedAccount.name}</strong>
+                    선택한 계정: <strong>{selectedAccount.displayName || selectedAccount.name}</strong>
                   </div>
                 )}
 
