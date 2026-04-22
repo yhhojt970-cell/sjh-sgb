@@ -299,7 +299,16 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
         
         if (dayIdx !== undefined) {
            const targetDate = format(addDays(weekStart, dayIdx), 'yyyy-MM-dd')
-           const kidId = Object.keys(allUsers || {}).find(k => k.includes(kidName) || kidName.includes(k)) || kidName
+           const kidId =
+             Object.keys(allUsers || {}).find((key) => {
+               const info = allUsers[key] || {}
+               return (
+                 key.includes(kidName) ||
+                 kidName.includes(key) ||
+                 (info.displayName && info.displayName.includes(kidName)) ||
+                 (info.displayName && kidName.includes(info.displayName))
+               )
+             }) || kidName
 
            let notes = ''
            let startDate = ''
@@ -499,7 +508,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           <div style={{ display: 'flex', gap: '10px' }}>
             {isAdmin && (
               <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '12px' }}>
-                {kids.map(kid => (<button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '600', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{kid}</button>))}
+                {kids.map(kid => (<button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '600', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{allUsers[kid]?.displayName || kid}</button>))}
               </div>
             )}
             {isCloud && isAdmin && (
@@ -566,7 +575,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                            <input type="checkbox" checked={selectedKids.includes(kid)} onChange={(e) => {
                              if (e.target.checked) setSelectedKids([...selectedKids, kid])
                              else setSelectedKids(selectedKids.filter(k => k !== kid))
-                           }} /> {kid}
+                           }} /> {allUsers[kid]?.displayName || kid}
                          </label>
                        ))}
                     </div>

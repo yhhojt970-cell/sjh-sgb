@@ -44,6 +44,13 @@ const ACCOUNTS = {
   }
 }
 
+const ACCOUNT_NAME_ALIASES = Object.fromEntries(
+  Object.entries(ACCOUNTS).flatMap(([loginId, info]) => [
+    [info.name, loginId],
+    [info.displayName, loginId]
+  ])
+)
+
 const normalizeIdToEmail = (id) => `${(id || '').trim()}@kidschedule.local`
 
 export default function App() {
@@ -106,7 +113,28 @@ export default function App() {
     }
   }, [profile?.householdId])
 
-  const allUsers = useMemo(() => household?.people || {}, [household?.people])
+  const allUsers = useMemo(() => {
+    const people = household?.people || {}
+
+    return Object.fromEntries(
+      Object.entries(ACCOUNTS).map(([loginId, info]) => {
+        const matchedEntry = Object.entries(people).find(([personName, person]) => {
+          const matchedLoginId = person?.loginId || ACCOUNT_NAME_ALIASES[personName]
+          return matchedLoginId === loginId
+        })
+
+        return [
+          info.name,
+          {
+            role: matchedEntry?.[1]?.role || info.role,
+            loginId,
+            name: info.name,
+            displayName: info.displayName
+          }
+        ]
+      })
+    )
+  }, [household?.people])
 
   const user = useMemo(() => {
     if (!profile?.name) return null
