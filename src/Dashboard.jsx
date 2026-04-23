@@ -214,39 +214,39 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if (d?.type === 'palette') setActiveDragItem({ type: 'palette', subject: d.subject }); else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={handleDragEnd}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* Optimized Header for Mobile/PC */}
-        <header className="glass" style={{ padding: isMobile ? '12px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ position: 'relative' }}>
-                  <div style={{ background: 'var(--bg-gradient)', color: 'white', padding: isMobile ? '8px' : '10px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(124, 156, 255, 0.2)' }}><Star size={isMobile ? 20 : 24} /></div>
-                  {todayMessage && <button onClick={() => setShowSurprise(true)} className="animate-bounce" style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', padding: '5px', cursor: 'pointer' }}><Gift size={12} /></button>}
-                </div>
-                <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '900', color: 'var(--text-main)' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
+        {/* Compact Header for Mobile */}
+        <header className="glass" style={{ padding: isMobile ? '12px 15px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '15px' }}>
+              <div style={{ position: 'relative' }}>
+                <div style={{ background: 'var(--bg-gradient)', color: 'white', padding: isMobile ? '7px' : '10px', borderRadius: '10px', boxShadow: '0 4px 10px rgba(124, 156, 255, 0.2)' }}><Star size={isMobile ? 18 : 24} /></div>
+                {todayMessage && <button onClick={() => setShowSurprise(true)} className="animate-bounce" style={{ position: 'absolute', top: '-7px', right: '-7px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', padding: '4px', cursor: 'pointer' }}><Gift size={10} /></button>}
               </div>
+              <h1 style={{ fontSize: isMobile ? '17px' : '22px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
+            </div>
 
-              {/* Essentials Bar (Responsive) */}
-              {essentialChecklist.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(255, 77, 109, 0.05)', borderRadius: '12px', alignSelf: 'flex-start', overflowX: 'auto', maxWidth: '100%', scrollbarWidth: 'none' }}>
-                  <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d' }}>오늘의 필수!</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '8px' }}>
+              <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 18 : 22}/></button>
+              {isAdmin && <button onClick={() => { setShowMessageManager(true); setMessageTarget(activeKidId); }} style={{ background: 'rgba(255, 77, 109, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: '#ff4d6d' }}><Mail size={isMobile ? 18 : 22}/></button>}
+              <button onClick={() => setShowGoals(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><Trophy size={isMobile ? 18 : 22}/></button>
+              <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px' }}><Settings size={isMobile ? 18 : 22} /></button>
+              <button onClick={onLogout} style={{ background: 'rgba(244, 63, 94, 0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--secondary)' }}><LogOut size={isMobile ? 18 : 22} /></button>
+            </div>
+            
+            {/* Essentials Row (Always below on Mobile) */}
+            {essentialChecklist.length > 0 && (
+              <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(255, 77, 109, 0.05)', borderRadius: '12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+                <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap' }}>오늘의 필수!</span>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   {essentialChecklist.map(e => (
                     <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-                      {e.completed ? <Heart size={14} fill="#ff4d6d" color="#ff4d6d" className="animate-pulse" /> : <div style={{ width: '12px', height: '12px', borderRadius: '3px', border: '1.5px solid #ff4d6d', opacity: 0.4 }} />}
+                      {e.completed ? <Heart size={13} fill="#ff4d6d" color="#ff4d6d" className="animate-pulse" /> : <div style={{ width: '11px', height: '11px', borderRadius: '3px', border: '1.5px solid #ff4d6d', opacity: 0.4 }} />}
                       <span style={{ fontSize: '12px', fontWeight: '800', color: e.completed ? '#ff4d6d' : '#666' }}>{e.name || '공부'}</span>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '8px' }}>
-              <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 20 : 22}/></button>
-              {isAdmin && <button onClick={() => { setShowMessageManager(true); setMessageTarget(activeKidId); }} style={{ background: 'rgba(255, 77, 109, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: '#ff4d6d' }}><Mail size={isMobile ? 20 : 22}/></button>}
-              <button onClick={() => setShowGoals(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><Trophy size={isMobile ? 20 : 22}/></button>
-              <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px' }}><Settings size={isMobile ? 20 : 22} /></button>
-              <button onClick={onLogout} style={{ background: 'rgba(244, 63, 94, 0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--secondary)' }}><LogOut size={isMobile ? 20 : 22} /></button>
-            </div>
+              </div>
+            )}
           </div>
 
           {isAdmin && (
@@ -283,36 +283,35 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
         <div className={isMobile ? "" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? '15px' : '30px' }}>
           <aside style={{ display: isMobile && !showPalette ? 'none' : 'flex', flexDirection: 'column', gap: '20px' }}>
              <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={setPaletteSubjects} /></div>
-             {!isMobile && (
-               <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px', boxShadow: 'var(--shadow)' }}>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}><LayoutGrid size={22} color="var(--primary)"/><h3 style={{ fontSize: '18px', fontWeight: '900' }}>학습 센터</h3></div>
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                   {studyApps.map((app, i) => (
-                     <button key={app.id} onClick={() => window.open(app.url, '_blank')} style={{ padding: '15px 10px', borderRadius: '15px', border: 'none', cursor: 'pointer', textAlign: 'center', background: 'white', boxShadow: '0 4px 8px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
-                       <div style={{ width: '40px', height: '40px', background: APP_COLORS[i % APP_COLORS.length], borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight: '900' }}>{app.name[0]}</div>
-                       <span style={{ fontSize: '12px', fontWeight: '800' }}>{app.name}</span>
-                     </button>
-                   ))}
-                 </div>
-               </div>
-             )}
           </aside>
           <main><TimeGrid tasks={todayTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} /></main>
         </div>
 
-        {/* App Launcher Modal */}
+        {/* Message Manager Modal */}
+        {showMessageManager && isAdmin && (
+           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>깜짝 메시지</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <select className="input-field" style={{ width: '100%', boxSizing: 'border-box' }} value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
+                  <input type="date" className="input-field" style={{ width: '100%', boxSizing: 'border-box', display: 'block' }} value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
+                  <textarea className="input-field" style={{ height: '100px', width: '100%', boxSizing: 'border-box' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d', width: '100%' }}>전송</button>
+                </div>
+             </div>
+           </div>
+        )}
+
+        {/* Other Modals (Launcher, Surprise View, Goals, Settings) - Kept simple & responsive */}
         {showAppLauncher && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-bounce-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '900' }}>학습 센터 🚀</h2>
-                <button onClick={() => setShowAppLauncher(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={24}/></button>
-              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '20px', fontWeight: '900' }}>학습 센터 🚀</h2><button onClick={() => setShowAppLauncher(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={24}/></button></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                 {studyApps.map((app, i) => (
                   <div key={app.id} style={{ position: 'relative' }}>
                     <button onClick={() => window.open(app.url, '_blank')} style={{ width: '100%', aspectRatio: '1/1', background: 'white', border: 'none', borderRadius: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-                      <div style={{ width: '45px', height: '45px', background: APP_COLORS[i % APP_COLORS.length], borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '20px', fontWeight: '900' }}>{app.name[0]}</div>
+                      <div style={{ width: '40px', height: '40px', background: APP_COLORS[i % APP_COLORS.length], borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '18px', fontWeight: '900' }}>{app.name[0]}</div>
                       <div style={{ fontSize: '12px', fontWeight: '800', maxWidth: '80px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{app.name}</div>
                     </button>
                     {isAdmin && <button onClick={() => deleteStudyApp(app.id)} style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'none', border: 'none', color: '#ff4d6d' }}><Trash size={16}/></button>}
@@ -324,7 +323,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </div>
         )}
 
-        {/* Surprise Message Modal */}
         {showSurprise && todayMessage && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-bounce-in" style={{ background: 'white', padding: '30px', borderRadius: '30px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
@@ -336,61 +334,19 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </div>
         )}
 
-        {/* Goals / Essentials Manager Modal */}
         {showGoals && (
            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(5px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
              <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '20px', fontWeight: '900', color:'var(--primary)' }}>목표 및 관리 🏆</h2><button onClick={() => setShowGoals(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={24}/></button></div>
-               
                {isAdmin && (
                  <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(255, 77, 109, 0.05)', borderRadius: '18px' }}>
                    <h3 style={{ fontSize: '15px', fontWeight: '900', color: '#ff4d6d', marginBottom: '10px' }}>꼭! 해야할 공부 설정</h3>
-                   <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                     <input 
-                       className="input-field" 
-                       style={{ flex: 1, padding: '10px', borderRadius: '12px' }} 
-                       placeholder="이름 입력 후 엔터 (쉼표 가능)" 
-                       onKeyDown={(e) => { 
-                         if(e.key === 'Enter' && e.target.value) { 
-                           const names = e.target.value.split(',').map(n => n.trim()).filter(n => n !== '');
-                           if(names.length > 0) {
-                             applyEssentialsChange(prev => [...prev, ...names.map(name => ({ id: Date.now() + Math.random(), name }))]);
-                             e.target.value = '';
-                           }
-                         } 
-                       }} 
-                     />
-                   </div>
-                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                     {essentials.map(e => (
-                       <div key={e.id} style={{ background: 'white', padding: '6px 10px', borderRadius: '10px', border: '1px solid #ff4d6d', color: '#ff4d6d', fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                         {e.name || '공부'} 
-                         <Trash size={12} style={{cursor:'pointer'}} onClick={() => applyEssentialsChange(prev => prev.filter(item => item.id !== e.id))}/>
-                       </div>
-                     ))}
-                   </div>
+                   <input className="input-field" style={{ width:'100%', boxSizing:'border-box', marginBottom:'10px' }} placeholder="이름 입력 후 엔터 (쉼표 가능)" onKeyDown={(e) => { if(e.key === 'Enter' && e.target.value) { const names = e.target.value.split(',').map(n => n.trim()).filter(n => n !== ''); if(names.length > 0) { applyEssentialsChange(prev => [...prev, ...names.map(name => ({ id: Date.now() + Math.random(), name }))]); e.target.value = ''; } } }} />
+                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>{essentials.map(e => ( <div key={e.id} style={{ background: 'white', padding: '6px 10px', borderRadius: '10px', border: '1px solid #ff4d6d', color: '#ff4d6d', fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>{e.name} <Trash size={12} style={{cursor:'pointer'}} onClick={() => applyEssentialsChange(prev => prev.filter(item => item.id !== e.id))}/></div> ))}</div>
                  </div>
                )}
-
                <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{flex:1, padding:'10px', borderRadius:'12px'}} placeholder="이번 주 목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...prev, {id:Date.now(), text:newGoal, done:false}]); setNewGoal(''); } }} className="btn-primary" style={{ width: '50px', borderRadius:'12px' }}><Plus/></button></div>
-               <div style={{ maxHeight: '250px', overflowY: 'auto', display:'grid', gap:'8px' }}>
-                 {goals.map(g => <div key={g.id} onClick={() => applyGoalsChange(prev => prev.map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ padding: '12px', background: g.done ? '#f0fff4' : '#f8fafc', borderRadius: '12px', fontSize: '14px', cursor: 'pointer', display:'flex', alignItems:'center', gap:'10px' }}><div style={{width:'16px', height:'16px', borderRadius:'50%', border: g.done ? 'none' : '2px solid #cbd5e0', background: g.done ? '#38a169' : 'transparent'}} /> <span style={{ textDecoration: g.done ? 'line-through' : 'none', opacity: g.done ? 0.5 : 1, fontWeight:'700' }}>{g.text}</span></div>)}
-               </div>
-             </div>
-           </div>
-        )}
-
-        {/* Other Modals (Settings, Messages) */}
-        {showMessageManager && isAdmin && (
-           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>깜짝 메시지</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <select className="input-field" value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
-                  <input type="date" className="input-field" value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
-                  <textarea className="input-field" style={{ height: '100px' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
-                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d' }}>전송</button>
-                </div>
+               <div style={{ maxHeight: '250px', overflowY: 'auto', display:'grid', gap:'8px' }}>{goals.map(g => <div key={g.id} onClick={() => applyGoalsChange(prev => prev.map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ padding: '12px', background: g.done ? '#f0fff4' : '#f8fafc', borderRadius: '12px', fontSize: '14px', cursor: 'pointer', display:'flex', alignItems:'center', gap:'10px' }}><div style={{width:'16px', height:'16px', borderRadius:'50%', border: g.done ? 'none' : '2px solid #cbd5e0', background: g.done ? '#38a169' : 'transparent'}} /> <span style={{ textDecoration: g.done ? 'line-through' : 'none', opacity: g.done ? 0.5 : 1, fontWeight:'700' }}>{g.text}</span></div>)}</div>
              </div>
            </div>
         )}
@@ -400,9 +356,8 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
              <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900' }}>설정</h2><button onClick={() => setShowSettings(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={24}/></button></div>
                <div style={{ display: 'grid', gap: '10px' }}>
-                 <input className="input-field" type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                 <input className="input-field" type="password" placeholder="새 비밀번호" value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} />
-                 {passwordMessage && <div style={{ fontSize: '12px', color: 'var(--accent)' }}>{passwordMessage}</div>}
+                 <input className="input-field" type="password" style={{width:'100%', boxSizing:'border-box'}} placeholder="현재 비밀번호" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                 <input className="input-field" type="password" style={{width:'100%', boxSizing:'border-box'}} placeholder="새 비밀번호" value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} />
                  <button className="btn-primary" onClick={submitPasswordChange}>변경하기</button>
                </div>
              </div>
