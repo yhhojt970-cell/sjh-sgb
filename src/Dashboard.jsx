@@ -178,7 +178,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const todayStr = format(selectedDate, 'yyyy-MM-dd')
 
   const todayTasks = useMemo(
-    () => tasks.filter((task) => (task.type === 'class' ? Number(task.weekday) === getDay(selectedDate) : task.date === todayStr)),
+    () =>
+      tasks.filter((task) => {
+        if (task.type !== 'class') return task.date === todayStr
+        if (task.weekday !== undefined && task.weekday !== null && task.weekday !== '') {
+          return Number(task.weekday) === getDay(selectedDate)
+        }
+        if (task.date) return task.date === todayStr
+        return true
+      }),
     [tasks, selectedDate, todayStr]
   )
 
