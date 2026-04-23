@@ -230,7 +230,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '3px' : '8px', flexShrink: 0 }}>
-              <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 18 : 22}/></button>
+              {isAdmin && <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 18 : 22}/></button>}
               {isAdmin && <button onClick={() => { setShowMessageManager(true); setMessageTarget(activeKidId); }} style={{ background: 'rgba(255, 77, 109, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: '#ff4d6d' }}><Mail size={isMobile ? 18 : 22}/></button>}
               <button onClick={() => setShowGoals(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--primary)' }}><Trophy size={isMobile ? 18 : 22}/></button>
               <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px' }}><Settings size={isMobile ? 18 : 22} /></button>
