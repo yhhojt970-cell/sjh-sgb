@@ -597,7 +597,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
         <div className="dashboard-main-grid" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '30px' }}>
           <aside className="dashboard-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} /></div>
+            <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} activeKidId={activeKidId} /></div>
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}><Gift size={20} style={{ color: 'var(--secondary)' }} /><h3 style={{ fontSize: '16px', fontWeight: '700' }}>나의 소원 리스트</h3></div>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ applyWishesChange(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} className="icon-add-button" style={{ background: 'var(--secondary)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer' }}><Plus size={16}/></button></div>

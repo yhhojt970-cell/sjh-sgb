@@ -13,7 +13,7 @@ const DEFAULT_SUBJECTS = [
 
 function PaletteItem({ subject, onSave, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `palette-${subject.name}`,
+    id: `palette-${subject.name}-${subject.kidId || 'shared'}`,
     data: {
       type: 'palette',
       subject
@@ -65,7 +65,7 @@ function PaletteItem({ subject, onSave, onDelete }) {
             onClick={() => {
               const nextName = draftName.trim()
               if (!nextName) return
-              onSave(subject.name, { ...subject, name: nextName, color: draftColor })
+              onSave(subject.name, subject.kidId, { ...subject, name: nextName, color: draftColor })
               setIsEditing(false)
             }}
           >
@@ -108,7 +108,7 @@ function PaletteItem({ subject, onSave, onDelete }) {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              onDelete(subject.name)
+              onDelete(subject.name, subject.kidId)
             }}
             style={{ border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}
           >
@@ -120,7 +120,7 @@ function PaletteItem({ subject, onSave, onDelete }) {
   )
 }
 
-export function SubjectPalette({ cloud }) {
+export function SubjectPalette({ cloud, activeKidId }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const lastSyncedRef = useRef('')
   const readyRef = useRef(false)
@@ -147,12 +147,16 @@ export function SubjectPalette({ cloud }) {
     })
   }
 
-  const updateSubject = (prevName, nextSubject) => {
-    persist((subjects || []).map((item) => (item.name === prevName ? nextSubject : item)))
+  const updateSubject = (prevName, prevKidId, nextSubject) => {
+    persist((subjects || []).map((item) => 
+      (item.name === prevName && item.kidId === prevKidId) ? nextSubject : item
+    ))
   }
 
-  const deleteSubject = (name) => {
-    persist((subjects || []).filter((item) => item.name !== name))
+  const deleteSubject = (name, kidId) => {
+    persist((subjects || []).filter((item) => 
+      !(item.name === name && item.kidId === kidId)
+    ))
   }
 
   useEffect(() => {
@@ -187,7 +191,13 @@ export function SubjectPalette({ cloud }) {
     return () => clearTimeout(t)
   }, [isCloud, cloud?.db, cloud?.householdId, subjects])
 
-  const list = useMemo(() => (subjects || []).filter((s) => s?.name), [subjects])
+  const list = useMemo(() => {
+    return (subjects || []).filter((s) => {
+      if (!s?.name) return false
+      // Show shared subjects (no kidId) OR subjects belonging to the active kid
+      return !s.kidId || s.kidId === activeKidId
+    })
+  }, [subjects, activeKidId])
 
   return (
     <div style={{ padding: '18px' }}>
@@ -197,8 +207,13 @@ export function SubjectPalette({ cloud }) {
       </div>
 
       <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
-        {list.map((s) => (
-          <PaletteItem key={s.name} subject={s} onSave={updateSubject} onDelete={deleteSubject} />
+        {list.map((s, idx) => (
+          <PaletteItem 
+            key={`${s.name}-${s.kidId || 'shared'}-${idx}`} 
+            subject={s} 
+            onSave={updateSubject} 
+            onDelete={deleteSubject} 
+          />
         ))}
       </div>
 
@@ -218,7 +233,12 @@ export function SubjectPalette({ cloud }) {
         onClick={() => {
           const name = newName.trim()
           if (!name) return
-          persist([...(subjects || []), { name, color: newColor }])
+          // Check for duplicate in the visible list to avoid confusion
+          if (list.some(s => s.name === name)) {
+            alert('이미 같은 이름의 과목이 있습니다.')
+            return
+          }
+          persist([...(subjects || []), { name, color: newColor, kidId: activeKidId }])
           setNewName('')
         }}
       >
