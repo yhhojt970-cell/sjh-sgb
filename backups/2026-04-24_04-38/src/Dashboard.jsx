@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from '@nd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, Gift, Trophy, Plus, LayoutGrid, Mail, Send, X as CloseIcon, Trash, Sparkles, Calendar, Coins, Check, Users, BookOpen } from 'lucide-react'
@@ -27,34 +27,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [newReward, setNewReward] = useState({ text: '', coins: 50 }); const [newEssential, setNewEssential] = useState(''); const [newMessage, setNewMessage] = useState(''); const [messageTarget, setMessageTarget] = useState(''); const [replyText, setReplyText] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null); const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // ROBUST FILTER: Only '손지희' and '손가빈' (exactly one each)
   const kidsList = useMemo(() => {
-    const list = [];
-    const seenNames = new Set();
-    const targets = ['손지희', '손가빈'];
-    
-    // First, try to find the official IDs
-    const officialIds = ['sjh150717', 'sgb170101'];
-    officialIds.forEach(id => {
-      if (allUsers[id]) {
-        const name = allUsers[id].displayName || allUsers[id].name;
-        if (targets.includes(name)) {
-          list.push(id);
-          seenNames.add(name);
-        }
-      }
-    });
-
-    // Then, if any are missing or if there are other entries with the same names, ensure we only have the unique ones
-    Object.entries(allUsers).forEach(([id, info]) => {
-      const name = info.displayName || info.name;
-      if (targets.includes(name) && !seenNames.has(name)) {
-        list.push(id);
-        seenNames.add(name);
-      }
-    });
-    
-    return list;
+    const validIds = ['sjh150717', 'sgb170101']
+    return Object.keys(allUsers).filter(id => validIds.includes(id))
   }, [allUsers])
 
   useEffect(() => {
@@ -107,11 +82,20 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         <header style={{ padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', background: 'white', border: `1px solid ${BORDER_COLOR}`, boxShadow: '0 4px 12px rgba(255, 77, 109, 0.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '15px' }}>
+              
+              {/* RESTORED GIFT BOX ICON STATES */}
               <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
                 <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none', transition: 'all 0.3s ease' }}>
-                   {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" className="animate-bounce" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" style={{ opacity: 0.5 }} />}
+                   {unreadMessage ? (
+                     <Gift size={isMobile ? 22 : 24} color="white" className="animate-bounce" />
+                   ) : hasReadToday ? (
+                     <Check size={isMobile ? 22 : 24} color="#42c99b" />
+                   ) : (
+                     <Gift size={isMobile ? 22 : 24} color="#ccc" style={{ opacity: 0.5 }} />
+                   )}
                 </div>
               </div>
+
               <div>
                 <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: '900', color: '#333', margin: 0 }}>{allUsers[activeKidId]?.displayName || activeKidId} <span style={{fontSize:'12px', color:PRIMARY_PINK, marginLeft:'5px'}}><Coins size={14} style={{verticalAlign:'middle'}}/> {availableCoins}</span></h1>
               </div>
@@ -133,6 +117,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         </header>
 
+        {/* REST OF DASHBOARD CONTENT... */}
         <div style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', border: `1px solid ${BORDER_COLOR}` }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
             <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: '#ff4d6d' }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
@@ -152,7 +137,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
           <main style={{ width: '100%' }}>
              {isAdmin && (
-               <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 100 }}>
+               <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 100, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <button onClick={() => setShowPalette(true)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255, 77, 109, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                      <Plus size={isMobile ? 35 : 40} />
                   </button>
@@ -162,7 +147,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </main>
         </div>
 
-        {/* MODALS */}
+        {/* MODALS (Goals, Palette, Apps, Settings, Surprise, Family) */}
         {showPalette && (
            <div className="modal-overlay" onClick={() => setShowPalette(false)}>
              <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
