@@ -107,9 +107,40 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     })
   }
 
+  const applyGoalsChange = (updater) => {
+    setGoals(prev => {
+      const next = typeof updater === 'function' ? updater(prev || []) : updater
+      if (isCloud) persistActiveKidState({ goals: next }).catch(console.error)
+      return next
+    })
+  }
+
+  const applyWishesChange = (updater) => {
+    setWishes(prev => {
+      const next = typeof updater === 'function' ? updater(prev || []) : updater
+      if (isCloud) persistActiveKidState({ wishes: next }).catch(console.error)
+      return next
+    })
+  }
+
+  const handleBulkAdd = async () => {
+    if (!bulkInput.trim()) return
+    const lines = bulkInput.split('\n')
+    for (const line of lines) {
+      const [kidName, weekdayStr, subjectName, hour, min] = line.split('\t')
+      if (!kidName || !weekdayStr || !subjectName) continue
+      const targetKid = kidsList.find(id => allUsers[id]?.displayName === kidName || id === kidName)
+      if (!targetKid) continue
+      const weekday = parseInt(weekdayStr)
+      const startTime = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+      addTask(subjectName, '#7c9cff', startTime, 50, 'class', 'Book', targetKid, format(selectedDate, 'yyyy-MM-dd'), { weekday })
+    }
+    setBulkInput(''); setShowClassManager(false); alert('수업 일괄 등록 완료!')
+  }
+
   const addStudyApp = async () => {
     if (!appName || !appUrl) return
-    const newApp = { id: Date.now(), name: appName, url: appUrl.startsWith('http') ? appUrl : `https://${appUrl}` }
+    const newApp = { id: Date.now(), name: appName, url: appUrl.startsWith('http') || appUrl.includes('://') ? appUrl : `https://${appUrl}` }
     const next = [...studyApps, newApp]
     if (isCloud) {
         const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'apps')
@@ -136,6 +167,14 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     setNewMessage(''); setShowMessageManager(false); alert('사랑의 메시지를 전송했어요! 💌')
   }
 
+  const submitPasswordChange = async () => {
+    if (!currentPassword || !nextPassword) return setPasswordMessage('모든 항목을 입력해 주세요.')
+    setPasswordBusy(true)
+    const res = await onChangePassword(currentPassword, nextPassword)
+    setPasswordMessage(res.message); setPasswordBusy(false)
+    if (res.ok) { setCurrentPassword(''); setNextPassword(''); setTimeout(() => setShowSettings(false), 2000) }
+  }
+
   const handleDragEnd = (event) => {
     const { active, over } = event
     if (!over) { setActiveDragItem(null); return }
@@ -153,13 +192,11 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     const [hour, min] = startTime.split(':').map(Number); const totalMinutes = hour * 60 + min + duration; const endH = Math.floor(totalMinutes / 60) % 24; const endM = totalMinutes % 60
     const expectedEndTime = `${endH < 10 ? '0' + endH : endH}:${endM < 10 ? '0' + endM : endM}`
     const newTask = { id: Math.random().toString(36).substr(2, 9), name, color, startTime, expectedEndTime, duration, type, icon, completed: false, date: targetDate, ...(type === 'class' ? { weekday: extra.weekday ?? getDay(parseISO(targetDate)) } : {}), ...extra }
-    applyTaskChange(prev => [...(prev || []), newTask])
+    if (targetKidId === activeKidId && targetDate === format(selectedDate, 'yyyy-MM-dd')) applyTaskChange(prev => [...(prev || []), newTask])
+    else if (isCloud) { (async () => { const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', targetKidId); await setDoc(ref, { tasks: arrayUnion(newTask), updatedAt: serverTimestamp() }, { merge: true }) })().catch(console.error) }
   }
 
-  const updateTask = (taskId, updates) => {
-    applyTaskChange(prev => (prev || []).map(t => t.id === taskId ? { ...t, ...updates } : t))
-  }
-
+  const updateTask = (taskId, updates) => { applyTaskChange(prev => (prev || []).map(t => t.id === taskId ? { ...t, ...updates } : t)) }
   const deleteTask = (taskId) => applyTaskChange(prev => (prev || []).filter(t => t.id !== taskId))
 
   const isAdmin = user?.role === 'admin'
@@ -171,7 +208,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if(d?.type==='palette') setActiveDragItem({type:'palette', subject:d.subject}); else if(d?.type==='task') setActiveDragItem({type:'task', task:d.task}); }} onDragEnd={handleDragEnd}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* Header */}
         <header className="glass" style={{ padding: isMobile ? '12px 15px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '12px', background: 'white' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
@@ -196,7 +232,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           )}
         </header>
 
-        {/* Date Nav */}
         <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: isMobile ? '12px' : '20px', marginBottom: '12px', boxShadow: 'var(--shadow)' }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '12px' }}>
              <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'rgba(0,0,0,0.03)', border: 'none', borderRadius: '50%', padding: '8px' }}><ChevronLeft size={20}/></button>
@@ -213,14 +248,12 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </div>
         </div>
 
-        {/* Toolbar */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
           <button onClick={() => { const todayStr = format(selectedDate, 'yyyy-MM-dd'); const tomorrowStr = format(addDays(selectedDate, 1), 'yyyy-MM-dd'); const todayTasks = tasks.filter(t => t.date === todayStr && t.type !== 'class'); if(todayTasks.length){ applyTaskChange(prev => [...prev, ...todayTasks.map(t => ({...t, id:Math.random().toString(36).substr(2,9), date:tomorrowStr, completed:false}))]); alert('내일로 복사 완료!'); } }} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', fontWeight: '800', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><Copy size={16}/> 내일복사</button>
           <button onClick={() => { if(confirm('초기화할까요?')) applyTaskChange(prev => prev.filter(t => t.type === 'class' || t.date !== format(selectedDate, 'yyyy-MM-dd'))) }} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', fontWeight: '800', color: '#ef4444', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><RotateCcw size={16}/> 초기화</button>
           {isAdmin && isMobile && <button onClick={() => setShowPalette(!showPalette)} style={{ width: '50px', borderRadius: '15px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={22} style={{ transition: '0.2s', transform: showPalette ? 'rotate(45deg)' : 'none' }} /></button>}
         </div>
 
-        {/* Main */}
         <div className={isMobile ? "" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? '12px' : '30px' }}>
           <aside style={{ display: isMobile && !showPalette ? 'none' : 'flex', flexDirection: 'column', gap: '20px' }}>
              <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={setPaletteSubjects} /></div>
@@ -241,7 +274,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           <main><TimeGrid tasks={currentTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} /></main>
         </div>
 
-        {/* Modals */}
         {showAppLauncher && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
@@ -262,7 +294,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                 {isAdmin && <button onClick={() => { const name = prompt('어플 이름'); const url = prompt('주소(URL)'); if(name && url){ setAppName(name); setAppUrl(url); } }} style={{ width: '100%', aspectRatio: '1/1', border: '2px dashed #ddd', borderRadius: '18px', background: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={24} color="#aaa"/></button>}
               </div>
               {isAdmin && appName && appUrl && <button onClick={addStudyApp} className="btn-primary" style={{ width: '100%' }}>등록하기</button>}
-              <p style={{ fontSize: '11px', color: '#999', textAlign: 'center' }}>등록된 사이트를 누르면 새 창으로 열립니다.</p>
             </div>
           </div>
         )}
@@ -289,6 +320,33 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             </div>
           </div>
         )}
+
+        {showSettings && (
+           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900' }}>설정</h2><button onClick={() => setShowSettings(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
+               <div style={{ display: 'grid', gap: '15px' }}>
+                 <input className="input-field" type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                 <input className="input-field" type="password" placeholder="새 비밀번호" value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} />
+                 {passwordMessage && <div style={{ fontSize: '12px', color: 'var(--accent)' }}>{passwordMessage}</div>}
+                 <button className="btn-primary" disabled={passwordBusy} onClick={submitPasswordChange}>비밀번호 변경</button>
+               </div>
+             </div>
+           </div>
+        )}
+
+        {showGoals && (
+           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900' }}>이번 주 목표</h2><button onClick={() => setShowGoals(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
+               <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}><input className="input-field" placeholder="목표를 입력하세요" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...prev, {id:Date.now(), text:newGoal, done:false}]); setNewGoal(''); } }} className="btn-primary" style={{ width: '50px' }}>+</button></div>
+               <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                 {goals.map(g => <div key={g.id} onClick={() => applyGoalsChange(prev => prev.map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ padding: '12px', background: g.done ? '#f0fff4' : '#f9f9f9', marginBottom: '8px', borderRadius: '12px', fontSize: '14px', cursor: 'pointer', textDecoration: g.done ? 'line-through' : 'none', opacity: g.done ? 0.6 : 1 }}>{g.text}</div>)}
+               </div>
+             </div>
+           </div>
+        )}
+
       </div>
       <DragOverlay>{activeDragItem && <div className="drag-preview-card" style={{ borderLeft: `6px solid ${activeDragItem.type==='palette' ? activeDragItem.subject.color : activeDragItem.task.color}` }}><div className="drag-preview-title">{activeDragItem.type==='palette' ? activeDragItem.subject.name : activeDragItem.task.name}</div></div>}</DragOverlay>
     </DndContext>
