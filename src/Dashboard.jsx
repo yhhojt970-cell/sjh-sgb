@@ -10,10 +10,10 @@ import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/f
 
 function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, cloud }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
-  const [activeKidId, setActiveKidId] = useState(user?.id || '')
+  const [activeKidId, setActiveKidId] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   
-  // Responsive check
+  // 1. Detect Environment (PC vs Mobile)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768)
@@ -29,16 +29,17 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     return defaultVal
   }
 
-  const [tasks, setTasks] = useState(() => (isCloud ? [] : loadState(`tasks_${activeKidId}`, [])))
-  const [logs, setLogs] = useState(() => (isCloud ? [] : loadState('kid_app_logs', [])))
-  const [goals, setGoals] = useState(() => (isCloud ? [] : loadState(`goals_${activeKidId}`, [])))
-  const [wishes, setWishes] = useState(() => (isCloud ? [] : loadState(`wishes_${activeKidId}`, [])))
+  // 2. Data States
+  const [tasks, setTasks] = useState([])
+  const [logs, setLogs] = useState([])
+  const [goals, setGoals] = useState([])
+  const [wishes, setWishes] = useState([])
 
   const [showSettings, setShowSettings] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
-  const [showPalette, setShowPalette] = useState(false)
+  const [showPalette, setShowPalette] = useState(false) // Toggle for mobile only
   
   const [newGoal, setNewGoal] = useState('')
   const [newWish, setNewWish] = useState('')
@@ -48,83 +49,67 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [passwordMessage, setPasswordMessage] = useState('')
   const [passwordBusy, setPasswordBusy] = useState(false)
 
-  const [className, setClassName] = useState('')
-  const [classStartTime, setClassStartTime] = useState('09:00')
-  const [classDuration, setClassDuration] = useState(50)
-  const [classColor, setClassColor] = useState('#8b5cf6')
-  const [classIcon, setClassIcon] = useState('Book')
-  const [classNotes, setClassNotes] = useState('')
-  const [classStartDate, setClassStartDate] = useState('')
-  const [classEndDate, setClassEndDate] = useState('')
   const [bulkInput, setBulkInput] = useState('')
-  const [selectedKids, setSelectedKids] = useState([activeKidId])
   const [activeDragItem, setActiveDragItem] = useState(null)
   const [paletteSubjects, setPaletteSubjects] = useState([])
 
-  const ICONS = ['Book', 'Music', 'Calculator', 'Languages', 'Palette', 'Activity', 'Coffee', 'User', 'Star']
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  const kidSyncRef = useRef({ kidId: null, json: '', ready: false })
-  const logsSyncRef = useRef({ json: '', ready: false })
-  const latestKidStateRef = useRef({ tasks: [], goals: [], wishes: [] })
+  // 3. Persistent Kid Selection
+  useEffect(() => {
+    if (!user?.id) return
+    const saved = loadState(`activeKid_${user.id}`, user.role === 'child' ? user.id : '')
+    if (saved) {
+      setActiveKidId(saved)
+    } else if (user.role === 'child') {
+      setActiveKidId(user.id)
+    } else {
+      const kidsList = Object.keys(allUsers || {}).filter(id => allUsers[id].role === 'child')
+      if (kidsList.length > 0) setActiveKidId(kidsList[0])
+    }
+  }, [user?.id, allUsers])
 
+  useEffect(() => {
+    if (user?.id && activeKidId) {
+      localStorage.setItem(`activeKid_${user.id}`, JSON.stringify(activeKidId))
+    }
+  }, [activeKidId, user?.id])
+
+  // 4. Data Sync Logic
   useEffect(() => {
     if (!activeKidId) return
     if (!isCloud) {
-        setTasks(loadState(`tasks_${activeKidId}`, []))
-        setGoals(loadState(`goals_${activeKidId}`, []))
-        setWishes(loadState(`wishes_${activeKidId}`, []))
+      setTasks(loadState(`tasks_${activeKidId}`, []))
+      setGoals(loadState(`goals_${activeKidId}`, []))
+      setWishes(loadState(`wishes_${activeKidId}`, []))
+      return
     }
-  }, [activeKidId, isCloud])
 
-  useEffect(() => {
-    if (!isCloud || !activeKidId) return
-    kidSyncRef.current = { kidId: activeKidId, json: '', ready: false }
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
     return onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
-      const next = { tasks: Array.isArray(data?.tasks) ? data.tasks : [], goals: Array.isArray(data?.goals) ? data.goals : [], wishes: Array.isArray(data?.wishes) ? data.wishes : [] }
-      const json = JSON.stringify(next)
-      kidSyncRef.current = { kidId: activeKidId, json, ready: true }
-      setTasks(next.tasks); setGoals(next.goals); setWishes(next.wishes)
+      setTasks(Array.isArray(data?.tasks) ? data.tasks : [])
+      setGoals(Array.isArray(data?.goals) ? data.goals : [])
+      setWishes(Array.isArray(data?.wishes) ? data.wishes : [])
     })
   }, [isCloud, cloud?.db, cloud?.householdId, activeKidId])
 
   useEffect(() => {
     if (!isCloud) return
-    logsSyncRef.current = { json: '', ready: false }
     const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'logs')
     return onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
-      const next = Array.isArray(data?.logs) ? data.logs : []
-      logsSyncRef.current = { json: JSON.stringify(next), ready: true }
-      setLogs(next)
+      setLogs(Array.isArray(data?.logs) ? data.logs : [])
     })
   }, [isCloud, cloud?.db, cloud?.householdId])
 
-  useEffect(() => {
-    if (!user?.id) return
-    const saved = loadState(`activeKid_${user.id}`, user.id)
-    setActiveKidId(prev => prev || saved || user.id)
-  }, [user?.id])
-
-  useEffect(() => {
-    if (!user?.id || !activeKidId) return
-    localStorage.setItem(`activeKid_${user.id}`, JSON.stringify(activeKidId))
-  }, [activeKidId, user?.id])
-
-  useEffect(() => { if (!activeKidId) return; setSelectedKids(prev => (prev || []).some(Boolean) ? prev : [activeKidId]) }, [activeKidId])
-  useEffect(() => { if(!isCloud && activeKidId) localStorage.setItem(`tasks_${activeKidId}`, JSON.stringify(tasks)) }, [tasks, activeKidId, isCloud])
-  useEffect(() => { if(!isCloud) localStorage.setItem('kid_app_logs', JSON.stringify(logs)) }, [logs, isCloud])
-  useEffect(() => { if(!isCloud && activeKidId) localStorage.setItem(`goals_${activeKidId}`, JSON.stringify(goals)) }, [goals, activeKidId, isCloud])
-  useEffect(() => { if(!isCloud && activeKidId) localStorage.setItem(`wishes_${activeKidId}`, JSON.stringify(wishes)) }, [wishes, activeKidId, isCloud])
-  useEffect(() => { latestKidStateRef.current = { tasks: tasks || [], goals: goals || [], wishes: wishes || [] } }, [tasks, goals, wishes])
-
   const persistActiveKidState = async (overrides = {}) => {
     if (!isCloud || !activeKidId) return
-    const payload = { tasks: overrides.tasks ?? latestKidStateRef.current.tasks ?? [], goals: overrides.goals ?? latestKidStateRef.current.goals ?? [], wishes: overrides.wishes ?? latestKidStateRef.current.wishes ?? [] }
-    const json = JSON.stringify(payload)
-    kidSyncRef.current = { kidId: activeKidId, json, ready: true }; latestKidStateRef.current = payload
+    const payload = { 
+      tasks: overrides.tasks ?? tasks ?? [], 
+      goals: overrides.goals ?? goals ?? [], 
+      wishes: overrides.wishes ?? wishes ?? [] 
+    }
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
     await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true })
   }
@@ -132,58 +117,10 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const applyTaskChange = (updater) => {
     setTasks((prev) => {
       const next = typeof updater === 'function' ? updater(prev || []) : updater
-      latestKidStateRef.current = { ...latestKidStateRef.current, tasks: next }
       if (isCloud) persistActiveKidState({ tasks: next }).catch(console.error)
+      else localStorage.setItem(`tasks_${activeKidId}`, JSON.stringify(next))
       return next
     })
-  }
-
-  const applyGoalsChange = (updater) => {
-    setGoals((prev) => {
-      const next = typeof updater === 'function' ? updater(prev || []) : updater
-      latestKidStateRef.current = { ...latestKidStateRef.current, goals: next }
-      if (isCloud) persistActiveKidState({ goals: next }).catch(console.error)
-      return next
-    })
-  }
-
-  const applyWishesChange = (updater) => {
-    setWishes((prev) => {
-      const next = typeof updater === 'function' ? updater(prev || []) : updater
-      latestKidStateRef.current = { ...latestKidStateRef.current, wishes: next }
-      if (isCloud) persistActiveKidState({ wishes: next }).catch(console.error)
-      return next
-    })
-  }
-
-  useEffect(() => {
-    if (!isCloud || !logsSyncRef.current.ready) return
-    const json = JSON.stringify(logs || [])
-    if (json === logsSyncRef.current.json) return
-    const t = setTimeout(async () => {
-      const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'logs')
-      await setDoc(ref, { logs: (logs || []).slice(0, 100), updatedAt: serverTimestamp() }, { merge: true })
-      logsSyncRef.current = { json, ready: true }
-    }, 500)
-    return () => clearTimeout(t)
-  }, [isCloud, cloud?.db, cloud?.householdId, logs])
-
-  const addLog = (action, detail) => {
-    const newLog = { id: Date.now(), timestamp: new Date().toISOString(), userId: user?.id || 'unknown', kidId: activeKidId, action, detail }
-    setLogs(prev => [newLog, ...(prev || [])].slice(0, 100))
-  }
-
-  const renderDragPreview = () => {
-    if (!activeDragItem) return null
-    if (activeDragItem.type === 'palette') return <div className="drag-preview-card" style={{ borderLeft: `6px solid ${activeDragItem.subject.color}` }}><div className="drag-preview-title">{activeDragItem.subject.name}</div></div>
-    if (activeDragItem.type === 'task') return <div className="drag-preview-card" style={{ borderLeft: `6px solid ${activeDragItem.task.color}` }}><div className="drag-preview-title">{activeDragItem.task.name}</div></div>
-    return null
-  }
-
-  const handleDragStart = (event) => {
-    const dragData = event.active?.data?.current
-    if (dragData?.type === 'palette') setActiveDragItem({ type: 'palette', subject: dragData.subject })
-    else if (dragData?.type === 'task') setActiveDragItem({ type: 'task', task: dragData.task })
   }
 
   const handleDragEnd = (event) => {
@@ -216,24 +153,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     const newTask = { id: Math.random().toString(36).substr(2, 9), name, color, startTime: safeStartTime, expectedEndTime, duration, type, icon, completed: false, date: targetDate, ...(type === 'class' ? { weekday: extra.weekday ?? getDay(parseISO(targetDate)) } : {}), ...extra }
     if (targetKidId === activeKidId && targetDate === format(selectedDate, 'yyyy-MM-dd')) applyTaskChange(prev => [...(prev || []), newTask])
     else if (isCloud) { (async () => { const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', targetKidId); await setDoc(ref, { tasks: arrayUnion(newTask), updatedAt: serverTimestamp() }, { merge: true }) })().catch(console.error) }
-    addLog(type === 'class' ? '고정 수업 추가' : '공부 계획 추가', `${targetDate} [${targetKidId}] ${name}`)
-  }
-
-  const handleBulkAdd = () => {
-    if (!bulkInput) return
-    const lines = bulkInput.trim().split('\n'); let count = 0; const dayMap = { '월': 0, '화': 1, '수': 2, '목': 3, '금': 4, '토': 5, '일': 6 }; const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
-    lines.forEach(line => {
-      const parts = line.split(/[\t]+| {2,}/).map(s => s.trim()).filter(Boolean)
-      if (parts.length >= 5) {
-        const [kidName, dayName, subject, time, duration, ...rest] = parts; const dayIdx = dayMap[dayName[0]]
-        if (dayIdx !== undefined) {
-           const targetDate = format(addDays(weekStart, dayIdx), 'yyyy-MM-dd'); const kidId = Object.keys(allUsers || {}).find(key => { const info = allUsers[key] || {}; return key.includes(kidName) || (info.displayName && info.displayName.includes(kidName)) }) || kidName
-           addTask(subject, '#8b5cf6', time, parseInt(duration) || 50, 'class', 'Book', kidId, targetDate, { weekday: getDay(parseISO(targetDate)), notes: rest[0] || '' })
-           count++
-        }
-      }
-    })
-    if (count > 0) { alert(`${count}개의 수업이 등록되었습니다!`); setBulkInput(''); setShowClassManager(false); }
   }
 
   const updateTask = (taskId, updates) => {
@@ -250,23 +169,12 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     }))
   }
 
-  const deleteTask = (taskId) => {
-    const task = (tasks || []).find(t => t.id === taskId)
-    if (task) { applyTaskChange(prev => (prev || []).filter(t => t.id !== taskId)); addLog('삭제', `${task.name}`) }
-  }
-
+  const deleteTask = (taskId) => applyTaskChange(prev => (prev || []).filter(t => t.id !== taskId))
   const copyToTomorrow = () => {
     const todayStr = format(selectedDate, 'yyyy-MM-dd'); const tomorrowStr = format(addDays(selectedDate, 1), 'yyyy-MM-dd'); const todayTasks = (tasks || []).filter(t => t.date === todayStr && t.type !== 'class')
-    if (todayTasks.length === 0) return alert('오늘 계획이 없어요!')
-    applyTaskChange(prev => [...(prev || []), ...todayTasks.map(t => ({ ...t, id: Math.random().toString(36).substr(2, 9), date: tomorrowStr, completed: false }))]); alert(`${tomorrowStr}로 계획이 복사되었습니다!`)
+    if (todayTasks.length === 0) return alert('오늘 계획이 없어요!'); applyTaskChange(prev => [...(prev || []), ...todayTasks.map(t => ({ ...t, id: Math.random().toString(36).substr(2, 9), date: tomorrowStr, completed: false }))]); alert(`${tomorrowStr}로 계획이 복사되었습니다!`)
   }
-
   const resetDay = () => { if (confirm('오늘의 모든 계획을 삭제하고 초기화할까요?')) { const todayStr = format(selectedDate, 'yyyy-MM-dd'); applyTaskChange(prev => (prev || []).filter(t => t.type === 'class' || t.date !== todayStr)) } }
-
-  const submitPasswordChange = async () => {
-    if (!onChangePassword || !currentPassword || !nextPassword) return; setPasswordBusy(true); const result = await onChangePassword(currentPassword, nextPassword); setPasswordBusy(false); setPasswordMessage(result.message)
-    if (result.ok) { setCurrentPassword(''); setNextPassword(''); setConfirmPassword(''); }
-  }
 
   const currentTasks = useMemo(() => {
     try {
@@ -281,71 +189,99 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   }, [tasks, selectedDate])
 
   const isAdmin = user?.role === 'admin'
-  const kids = Object.keys(allUsers || {}).filter(id => allUsers[id].role === 'child')
+  const kidsList = Object.keys(allUsers || {}).filter(id => allUsers[id].role === 'child')
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 }); const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if(d?.type==='palette') setActiveDragItem({type:'palette', subject:d.subject}); else if(d?.type==='task') setActiveDragItem({type:'task', task:d.task}); }} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '10px' : '20px' }}>
-        <header className="glass dashboard-header" style={{ padding: isMobile ? '12px' : '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '12px' : '0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ background: 'var(--primary)', color: 'white', padding: '6px', borderRadius: '10px' }}><Star size={isMobile ? 18 : 24} /></div>
-              <h1 style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: '800' }}>{allUsers[activeKidId]?.displayName || activeKidId}의 {isAdmin ? '스케줄' : '하루'}</h1>
+        
+        {/* PC Header */}
+        {!isMobile && (
+          <header className="glass" style={{ padding: '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div style={{ background: 'var(--primary)', color: 'white', padding: '12px', borderRadius: '18px' }}><Star size={28} /></div>
+              <div>
+                <h1 style={{ fontSize: '22px', fontWeight: '900', color: 'var(--text-main)' }}>{allUsers[activeKidId]?.displayName || activeKidId}의 하루</h1>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); setShowClassManager(false); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={isMobile ? 18 : 20}/></button>
-              {isAdmin && <button onClick={() => { setShowLogs(!showLogs); setShowGoals(false); setShowSettings(false); setShowClassManager(false); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--accent)' }}><ClipboardList size={isMobile ? 18 : 20}/></button>}
-              <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); setShowClassManager(false); setPasswordMessage(''); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}><Settings size={isMobile ? 18 : 20} /></button>
-              <button onClick={onLogout} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={isMobile ? 18 : 20} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {isAdmin && (
+                <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '14px', marginRight: '10px' }}>
+                  {kidsList.map(id => (
+                    <button key={id} onClick={() => setActiveKidId(id)} style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '800', cursor: 'pointer', boxShadow: activeKidId === id ? '0 4px 8px rgba(0,0,0,0.1)' : 'none', color: activeKidId === id ? 'var(--primary)' : 'var(--text-muted)' }}>{allUsers[id]?.displayName || id}</button>
+                  ))}
+                </div>
+              )}
+              <button onClick={() => setShowClassManager(!showClassManager)} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '800' }}><LayoutGrid size={20}/> 수업 관리</button>
+              <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={22}/></button>
+              <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}><Settings size={22} /></button>
+              <button onClick={onLogout} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={22} /></button>
             </div>
-          </div>
-          
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between', marginTop: isMobile ? '0' : '12px' }}>
+          </header>
+        )}
+
+        {/* Mobile Header */}
+        {isMobile && (
+          <header className="glass" style={{ padding: '12px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: 'var(--primary)', color: 'white', padding: '6px', borderRadius: '10px' }}><Star size={18} /></div>
+                <h1 style={{ fontSize: '15px', fontWeight: '800' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
+              </div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); }} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--primary)' }}><Trophy size={18}/></button>
+                <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'none', border: 'none', padding: '8px' }}><Settings size={18} /></button>
+                <button onClick={onLogout} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--secondary)' }}><LogOut size={18} /></button>
+              </div>
+            </div>
             {isAdmin && (
-              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '3px', borderRadius: '10px' }}>
-                {kids.map(kid => (
-                  <button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: isMobile ? '6px 12px' : '8px 16px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '700', fontSize: isMobile ? '12px' : '13px', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>
-                    {allUsers[kid]?.displayName || kid}
-                  </button>
+              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '3px', borderRadius: '10px', width: 'fit-content' }}>
+                {kidsList.map(id => (
+                  <button key={id} onClick={() => setActiveKidId(id)} style={{ padding: '6px 15px', borderRadius: '8px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '800', fontSize: '12px', boxShadow: activeKidId === id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{allUsers[id]?.displayName || id}</button>
                 ))}
               </div>
             )}
-            {isAdmin && (
-              <button onClick={() => setShowClassManager(!showClassManager)} style={{ padding: '6px 10px', borderRadius: '10px', border: 'none', background: 'rgba(139, 92, 246, 0.1)', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <LayoutGrid size={14}/> 수업관리
-              </button>
-            )}
-          </div>
-        </header>
+          </header>
+        )}
 
-        <div className="dashboard-date-nav" style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '15px' }}>
-          <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronLeft size={20}/></button>
-          <div className="dashboard-week-strip" style={{ display: 'flex', gap: '4px', overflowX: 'auto', flex: 1, padding: '2px 0', scrollbarWidth: 'none' }}>
+        {/* Date Navigation (Common but Centered) */}
+        <div className="dashboard-date-nav" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px' }}>
+             <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '50%', padding: '10px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronLeft size={20}/></button>
+             <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', minWidth: '130px', textAlign: 'center' }}>
+               {format(selectedDate, 'yyyy년 MM월')}
+             </div>
+             <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '50%', padding: '10px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronRight size={20}/></button>
+          </div>
+          <div className="dashboard-week-strip" style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', scrollbarWidth: 'none', justifyContent: isMobile ? 'flex-start' : 'center' }}>
             {weekDays.map(day => (
-              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '8px 0', borderRadius: '10px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: isMobile ? '42px' : '55px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span style={{ fontSize: '9px', opacity: 0.8, marginBottom: '2px' }}>{format(day, 'eee', { locale: ko })}</span>
-                <span style={{ fontSize: '13px' }}>{format(day, 'd')}</span>
+              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '10px 0', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: isMobile ? '45px' : '65px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span style={{ fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>{format(day, 'eee', { locale: ko })}</span>
+                <span style={{ fontSize: '14px' }}>{format(day, 'd')}</span>
               </button>
             ))}
           </div>
-          <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronRight size={20}/></button>
         </div>
 
+        {/* Toolbar */}
         <div className="dashboard-toolbar" style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-           <button onClick={copyToTomorrow} style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', boxShadow: 'var(--shadow)' }}><Copy size={14}/> 내일복사</button>
-           <button onClick={resetDay} style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: '#ef4444', boxShadow: 'var(--shadow)' }}><Trash2 size={14}/> 초기화</button>
+           <button onClick={copyToTomorrow} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: '800', boxShadow: 'var(--shadow)' }}><Copy size={16}/> 내일복사</button>
+           <button onClick={resetDay} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: '800', color: '#ef4444', boxShadow: 'var(--shadow)' }}><Trash2 size={16}/> 초기화</button>
            {isAdmin && isMobile && (
-             <button onClick={() => setShowPalette(!showPalette)} style={{ padding: '10px', borderRadius: '12px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', cursor: 'pointer', fontWeight: '700', boxShadow: 'var(--shadow)', display: 'flex' }}>
-               <Plus size={18} style={{ transform: showPalette ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+             <button onClick={() => setShowPalette(!showPalette)} style={{ padding: '12px', borderRadius: '15px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', cursor: 'pointer', fontWeight: '800', boxShadow: 'var(--shadow)', display: 'flex' }}>
+               <Plus size={20} style={{ transform: showPalette ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
              </button>
            )}
         </div>
 
-        <div className={isMobile ? "dashboard-main-stack" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '300px 1fr', gap: isMobile ? '15px' : '30px' }}>
+        {/* Main Content (PC=Grid, Mobile=Stack) */}
+        <div className={isMobile ? "dashboard-main-stack" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? '15px' : '30px' }}>
+          
           <aside className="dashboard-sidebar" style={{ display: isMobile && !showPalette ? 'none' : 'flex', flexDirection: 'column', gap: '20px' }}>
              <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}>
-               <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kids} onSubjectsChange={setPaletteSubjects} />
+               <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={setPaletteSubjects} />
              </div>
              {!isMobile && (
                <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
@@ -363,6 +299,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                </div>
              )}
           </aside>
+
           <main className="dashboard-main">
             {showClassManager && isAdmin ? (
                <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
@@ -379,14 +316,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                  <button className="btn-primary" onClick={submitPasswordChange}>변경하기</button>
                  <button className="btn-secondary" onClick={()=>setShowSettings(false)} style={{marginTop:'10px', width:'100%'}}>닫기</button>
                </div>
-            ) : showLogs ? (
-               <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
-                 <h2 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '15px' }}>활동 기록</h2>
-                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                   {(logs || []).filter(l => l.kidId === activeKidId).map(log => (<div key={log.id} style={{ padding: '8px 0', borderBottom: '1px solid #eee', fontSize: '12px' }}><strong>{log.action}</strong>: {log.detail}</div>))}
-                 </div>
-                 <button className="btn-secondary" onClick={()=>setShowLogs(false)} style={{marginTop:'10px', width:'100%'}}>닫기</button>
-               </div>
             ) : showGoals ? (
                <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
                  <h2 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '15px' }}>이번 주 목표</h2>
@@ -400,7 +329,11 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </main>
         </div>
       </div>
-      <DragOverlay>{renderDragPreview()}</DragOverlay>
+      <DragOverlay>{activeDragItem && (
+        <div className="drag-preview-card" style={{ borderLeft: `6px solid ${activeDragItem.type==='palette' ? activeDragItem.subject.color : activeDragItem.task.color}` }}>
+          <div className="drag-preview-title">{activeDragItem.type==='palette' ? activeDragItem.subject.name : activeDragItem.task.name}</div>
+        </div>
+      )}</DragOverlay>
     </DndContext>
   )
 }
