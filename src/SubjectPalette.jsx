@@ -120,13 +120,13 @@ function PaletteItem({ subject, onSave, onDelete }) {
   )
 }
 
-export function SubjectPalette({ cloud, activeKidId }) {
+export function SubjectPalette({ cloud, activeKidId, kids }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const lastSyncedRef = useRef('')
   const readyRef = useRef(false)
 
   const [subjects, setSubjects] = useState(() => {
-    if (isCloud) return DEFAULT_SUBJECTS
+    if (isCloud) return []
     try {
       const saved = localStorage.getItem('kid_app_subjects')
       if (saved) return JSON.parse(saved)
@@ -167,13 +167,32 @@ export function SubjectPalette({ cloud, activeKidId }) {
     const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
     return onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
-      const next = Array.isArray(data?.subjects) ? data.subjects : DEFAULT_SUBJECTS
-      const json = JSON.stringify(next || [])
+      const raw = Array.isArray(data?.subjects) ? data.subjects : DEFAULT_SUBJECTS
+      
+      // Migration: if kids list is available and there are shared subjects, duplicate them
+      if (kids && kids.length > 0 && raw.some(s => !s.kidId)) {
+        console.log('Migrating shared subjects to per-kid subjects...')
+        const migrated = []
+        raw.forEach(s => {
+          if (!s.kidId) {
+            // Duplicate for each kid
+            kids.forEach(kid => {
+              migrated.push({ ...s, kidId: kid })
+            })
+          } else {
+            migrated.push(s)
+          }
+        })
+        setSubjects(migrated)
+        return // The save effect will push this to Firestore
+      }
+
+      const json = JSON.stringify(raw || [])
       lastSyncedRef.current = json
       readyRef.current = true
-      setSubjects(next)
+      setSubjects(raw)
     })
-  }, [isCloud, cloud?.db, cloud?.householdId])
+  }, [isCloud, cloud?.db, cloud?.householdId, kids])
 
   useEffect(() => {
     if (!isCloud) return
@@ -194,8 +213,8 @@ export function SubjectPalette({ cloud, activeKidId }) {
   const list = useMemo(() => {
     return (subjects || []).filter((s) => {
       if (!s?.name) return false
-      // Show shared subjects (no kidId) OR subjects belonging to the active kid
-      return !s.kidId || s.kidId === activeKidId
+      // Strict filtering: ONLY show subjects belonging to the active kid
+      return s.kidId === activeKidId
     })
   }, [subjects, activeKidId])
 
@@ -217,23 +236,13 @@ export function SubjectPalette({ cloud, activeKidId }) {
               onSave={updateSubject} 
               onDelete={deleteSubject} 
             />
-            {s.kidId && (
-              <span style={{ 
-                position: 'absolute', 
-                top: '-5px', 
-                right: '5px', 
-                fontSize: '9px', 
-                background: 'rgba(0,0,0,0.4)', 
-                color: 'white', 
-                padding: '1px 4px', 
-                borderRadius: '4px',
-                pointerEvents: 'none'
-              }}>
-                {s.kidId}
-              </span>
-            )}
           </div>
         ))}
+        {list.length === 0 && (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center', padding: '10px', background: 'rgba(0,0,0,0.02)', borderRadius: '8px' }}>
+            등록된 과목이 없습니다.
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -252,11 +261,17 @@ export function SubjectPalette({ cloud, activeKidId }) {
         onClick={() => {
           const name = newName.trim()
           if (!name) return
-          // Check for duplicate in the visible list to avoid confusion
+          
+          if (!activeKidId || activeKidId === '엄마') {
+            alert('과목을 추가할 아이를 먼저 선택해 주세요! (상단 지희/가빈 버튼)')
+            return
+          }
+
           if (list.some(s => s.name === name)) {
             alert('이미 같은 이름의 과목이 있습니다.')
             return
           }
+          
           persist([...(subjects || []), { name, color: newColor, kidId: activeKidId }])
           setNewName('')
         }}
