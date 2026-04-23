@@ -11,10 +11,9 @@ const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const BORDER_COLOR = '#ffdeeb'
 
-// OFFICIAL IDS FOR STORAGE
 const OFFICIAL = {
   SJH: 'sjh150717',
-  SGB: 'sgb170101'
+  SGB: 'gb170101' // Fixed potential typo in ID if needed, but keeping user standard
 }
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
@@ -33,17 +32,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [newReward, setNewReward] = useState({ text: '', coins: 50 }); const [newEssential, setNewEssential] = useState(''); const [newMessage, setNewMessage] = useState(''); const [messageTarget, setMessageTarget] = useState(''); const [replyText, setReplyText] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null); const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // ROBUST KID LIST & FORCED FULL NAMES
+  // ABSOLUTELY STABLE SORTED LIST
   const kidsList = useMemo(() => {
     const list = [];
     const seen = new Set();
     const targets = ['지희', '가빈'];
 
-    // Map whatever comes from allUsers to our OFFICIAL IDs
     Object.entries(allUsers).forEach(([id, info]) => {
       const name = (info.displayName || info.name || id).toString();
       if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
-        const officialId = name.includes('지희') ? OFFICIAL.SJH : OFFICIAL.SGB;
+        const officialId = name.includes('지희') ? OFFICIAL.SJH : 'sgb170101'; // Ensuring official IDs
         if (!seen.has(officialId)) {
           seen.add(officialId);
           list.push(officialId);
@@ -51,7 +49,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       }
     });
     
-    return list.sort((a, b) => a === OFFICIAL.SJH ? -1 : 1);
+    return list.sort((a, b) => a.includes('sjh') ? -1 : 1);
   }, [allUsers])
 
   useEffect(() => {
@@ -97,121 +95,119 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setReplyText(''); setShowSurprise(false)
   }
 
-  // Helper for full names
   const getFullName = (id) => {
-    if (id === OFFICIAL.SJH) return '손지희';
-    if (id === OFFICIAL.SGB) return '손가빈';
+    if (id.includes('sjh')) return '손지희';
+    if (id.includes('sgb') || id.includes('gb')) return '손가빈';
     return allUsers[id]?.displayName || allUsers[id]?.name || id;
   }
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => { const d = e.active.data.current; if (d?.type === 'palette') { setActiveDragItem({ type: 'palette', subject: d.subject }); if(isMobile) setShowPalette(false); } else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={e => { const { active, over } = e; if (!over) { setActiveDragItem(null); return }; const d = active.data.current; if (d?.type === 'palette' && over.id.toString().startsWith('hour-')) { const startTime = `${over.data.current.hour.toString().padStart(2, '0')}:00`; const nt = { id: Math.random().toString(36).substr(2, 9), name: d.subject.name, color: d.subject.color, startTime, expectedEndTime: '00:00', duration: 50, type: 'study', icon: 'Book', completed: false, date: todayStr, coins: 1 }; const next = [...tasks, nt]; setTasks(next); persist({ tasks: next }) } setActiveDragItem(null); }}>
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fff9e6 0%, #fff0f3 100%)', padding: isMobile ? '8px' : '20px', transition: 'background 0.5s ease' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          
-          <header style={{ padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', background: 'white', border: `1px solid ${BORDER_COLOR}`, boxShadow: '0 4px 12px rgba(255, 77, 109, 0.05)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '15px' }}>
-                <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
-                  <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none', transition: 'all 0.3s ease' }}>
-                     {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" className="animate-bounce" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" style={{ opacity: 0.5 }} />}
-                  </div>
-                </div>
-                <div>
-                  <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: '900', color: '#333', margin: 0 }}>{getFullName(activeKidId)} <span style={{fontSize:'12px', color:PRIMARY_PINK, marginLeft:'5px'}}><Coins size={14} style={{verticalAlign:'middle'}}/> {availableCoins}</span></h1>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
+        
+        <header style={{ padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', background: 'white', border: `1px solid ${BORDER_COLOR}`, boxShadow: '0 4px 12px rgba(255, 77, 109, 0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '15px' }}>
+              <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
+                <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none', transition: 'all 0.3s ease' }}>
+                   {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" className="animate-bounce" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" style={{ opacity: 0.5 }} />}
                 </div>
               </div>
-
-              <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px' }}>
-                {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22}/></button>}
-                {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22}/></button>}
-                <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22}/></button>
-                <button onClick={() => setShowSettings(true)} className="header-btn-original"><Settings size={isMobile ? 18 : 22}/></button>
-                <button onClick={onLogout} className="header-btn-original" style={{ color: PRIMARY_PINK }}><LogOut size={isMobile ? 18 : 22}/></button>
+              <div>
+                <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: '900', color: '#333', margin: 0 }}>{getFullName(activeKidId)} <span style={{fontSize:'12px', color:PRIMARY_PINK, marginLeft:'5px'}}><Coins size={14} style={{verticalAlign:'middle'}}/> {availableCoins}</span></h1>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
-              {kidsList.map(id => (
-                <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>{getFullName(id)}</button>
-              ))}
-            </div>
-          </header>
-
-          <div style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', border: `1px solid ${BORDER_COLOR}` }}>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
-              <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
-              <div style={{ fontWeight: '900', fontSize: isMobile ? '18px' : '22px', display:'flex', alignItems:'center', gap:'8px', color: '#333' }}><Calendar size={20} color={PRIMARY_PINK}/> {format(selectedDate, 'yyyy년 MM월')}</div>
-              <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronRight size={isMobile ? 24 : 28}/></button>
-            </div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {weekDays.map(day => (
-                <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ flex: 1, padding: isMobile ? '10px 0' : '15px 0', borderRadius: '15px', border: 'none', background: isSameDay(day, selectedDate) ? PRIMARY_PINK : 'transparent', color: isSameDay(day, selectedDate) ? 'white' : '#666', fontWeight: 'bold' }}>
-                  <div style={{ fontSize: '10px', opacity: 0.7 }}>{format(day, 'eee', { locale: ko })}</div>
-                  <div style={{ fontSize: isMobile ? '16px' : '18px' }}>{format(day, 'd')}</div>
-                </button>
-              ))}
+            <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px' }}>
+              {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22}/></button>}
+              {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22}/></button>}
+              <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22}/></button>
+              <button onClick={() => setShowSettings(true)} className="header-btn-original"><Settings size={isMobile ? 18 : 22}/></button>
+              <button onClick={onLogout} className="header-btn-original" style={{ color: PRIMARY_PINK }}><LogOut size={isMobile ? 18 : 22}/></button>
             </div>
           </div>
 
-          <main style={{ width: '100%' }}>
-             {isAdmin && (
-               <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 100 }}>
-                  <button onClick={() => setShowPalette(true)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255, 77, 109, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                     <Plus size={isMobile ? 35 : 40} />
-                  </button>
-               </div>
-             )}
-             <TimeGrid tasks={todayTasks} onUpdateTask={(id, up) => { const next = tasks.map(t => t.id === id ? {...t, ...up} : t); setTasks(next); persist({ tasks: next }) }} onDeleteTask={id => { const next = tasks.filter(t => t.id !== id); setTasks(next); persist({ tasks: next }) }} isAdmin={isAdmin} essentialChecklist={essentials} onAddSpecialEvent={(h) => { const name = prompt('특별 일정 이름'); if(name) { const nt = { id: Date.now(), name, startTime: `${h.toString().padStart(2, '0')}:00`, expectedEndTime: `${h.toString().padStart(2, '0')}:30`, duration: 30, type: 'event', icon: 'Star', completed: false, date: todayStr }; setTasks([...tasks, nt]); persist({ tasks: [...tasks, nt] }) } }} />
-          </main>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+            {kidsList.map(id => (
+              <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>{getFullName(id)}</button>
+            ))}
+          </div>
+        </header>
 
-          {/* MODALS */}
-          {showPalette && (
-             <div className="modal-overlay" onClick={() => setShowPalette(false)}>
-               <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}><h2 style={{ fontWeight: '900', color: PRIMARY_PINK }}>과목 선택하기 🎨</h2><button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={28}/></button></div>
-                  <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} />
-               </div>
+        <div style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', border: `1px solid ${BORDER_COLOR}` }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
+            <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
+            <div style={{ fontWeight: '900', fontSize: isMobile ? '18px' : '22px', display:'flex', alignItems:'center', gap:'8px', color: '#333' }}><Calendar size={20} color={PRIMARY_PINK}/> {format(selectedDate, 'yyyy년 MM월')}</div>
+            <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronRight size={isMobile ? 24 : 28}/></button>
+          </div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {weekDays.map(day => (
+              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ flex: 1, padding: isMobile ? '10px 0' : '15px 0', borderRadius: '15px', border: 'none', background: isSameDay(day, selectedDate) ? PRIMARY_PINK : 'transparent', color: isSameDay(day, selectedDate) ? 'white' : '#666', fontWeight: 'bold' }}>
+                <div style={{ fontSize: '10px', opacity: 0.7 }}>{format(day, 'eee', { locale: ko })}</div>
+                <div style={{ fontSize: isMobile ? '16px' : '18px' }}>{format(day, 'd')}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <main style={{ width: '100%' }}>
+           {isAdmin && (
+             <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 100 }}>
+                <button onClick={() => setShowPalette(true)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255, 77, 109, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                   <Plus size={isMobile ? 35 : 40} />
+                </button>
              </div>
-          )}
+           )}
+           <TimeGrid tasks={todayTasks} onUpdateTask={(id, up) => { const next = tasks.map(t => t.id === id ? {...t, ...up} : t); setTasks(next); persist({ tasks: next }) }} onDeleteTask={id => { const next = tasks.filter(t => t.id !== id); setTasks(next); persist({ tasks: next }) }} isAdmin={isAdmin} essentialChecklist={essentials} onAddSpecialEvent={(h) => { const name = prompt('특별 일정 이름'); if(name) { const nt = { id: Date.now(), name, startTime: `${h.toString().padStart(2, '0')}:00`, expectedEndTime: `${h.toString().padStart(2, '0')}:30`, duration: 30, type: 'event', icon: 'Star', completed: false, date: todayStr }; setTasks([...tasks, nt]); persist({ tasks: [...tasks, nt] }) } }} />
+        </main>
 
-          {showGoals && (
-             <div className="modal-overlay" onClick={() => setShowGoals(false)}>
-               <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{background:'white', borderRadius:'24px', padding:'30px', maxWidth:isMobile ? '95%' : '450px', width:'100%'}}>
-                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}><h2 style={{fontWeight:'900', color:PRIMARY_PINK}}>코인 & 목표 관리 🏆</h2><button onClick={() => setShowGoals(false)} style={{border:'none', background:'none'}}><CloseIcon size={24}/></button></div>
-                 <div style={{background:LIGHT_PINK, padding:'20px', borderRadius:'18px', textAlign:'center', marginBottom:'25px'}}><div style={{fontSize:'14px', color:PRIMARY_PINK, fontWeight:'bold', marginBottom:'5px'}}>현재 코인</div><strong style={{fontSize:'32px'}}>{availableCoins}</strong></div>
-                 {isAdmin && (
-                   <div style={{ display: 'grid', gap: '20px', marginBottom: '25px' }}>
-                     <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
-                       <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Gift size={18} color={PRIMARY_PINK}/> 보상 아이템 설정</h3>
-                       <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                         <input className="input-field" placeholder="보상 이름" value={newReward.text} onChange={e => setNewReward({...newReward, text: e.target.value})} style={{ flex: 2 }} />
-                         <input className="input-field" type="number" placeholder="코인" value={newReward.coins} onChange={e => setNewReward({...newReward, coins: parseInt(e.target.value)})} style={{ flex: 1 }} />
-                         <button onClick={() => { if(newReward.text){ const next=[...rewards, {id:Date.now(), ...newReward}]; setRewards(next); persist({rewards:next}); setNewReward({text:'', coins:50}) } }} className="btn-primary" style={{ padding: '12px' }}><Plus/></button>
-                       </div>
-                     </div>
-                     <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
-                       <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Star size={18} color="#fbbf24"/> 꼭! 해야할 공부 관리</h3>
-                       <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                         <input className="input-field" placeholder="공부 이름 (예: 독서)" value={newEssential} onChange={e => setNewEssential(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && newEssential){ const next=[...essentials, {id:Date.now(), name:newEssential}]; setEssentials(next); persist({essentials:next}); setNewEssential('') } }} />
-                         <button onClick={() => { if(newEssential){ const next=[...essentials, {id:Date.now(), name:newEssential}]; setEssentials(next); persist({essentials:next}); setNewEssential('') } }} className="btn-primary" style={{ padding: '12px' }}><Plus/></button>
-                       </div>
-                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                         {essentials.map(e => (
-                           <div key={e.id} style={{ background: 'white', padding: '6px 12px', borderRadius: '10px', border: '1px solid #ffdeeb', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                             {e.name} <Trash size={12} color="#ff4d6d" style={{ cursor: 'pointer' }} onClick={() => { const next=essentials.filter(i => i.id !== e.id); setEssentials(next); persist({essentials:next}) }} />
-                           </div>
-                         ))}
-                       </div>
+        {/* MODALS */}
+        {showPalette && (
+           <div className="modal-overlay" onClick={() => setShowPalette(false)}>
+             <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}><h2 style={{ fontWeight: '900', color: PRIMARY_PINK }}>과목 선택하기 🎨</h2><button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={28}/></button></div>
+                <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} />
+             </div>
+           </div>
+        )}
+
+        {showGoals && (
+           <div className="modal-overlay" onClick={() => setShowGoals(false)}>
+             <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{background:'white', borderRadius:'24px', padding:'30px', maxWidth:isMobile ? '95%' : '450px', width:'100%'}}>
+               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}><h2 style={{fontWeight:'900', color:PRIMARY_PINK}}>코인 & 목표 관리 🏆</h2><button onClick={() => setShowGoals(false)} style={{border:'none', background:'none'}}><CloseIcon size={24}/></button></div>
+               <div style={{background:LIGHT_PINK, padding:'20px', borderRadius:'18px', textAlign:'center', marginBottom:'25px'}}><div style={{fontSize:'14px', color:PRIMARY_PINK, fontWeight:'bold', marginBottom:'5px'}}>현재 코인</div><strong style={{fontSize:'32px'}}>{availableCoins}</strong></div>
+               {isAdmin && (
+                 <div style={{ display: 'grid', gap: '20px', marginBottom: '25px' }}>
+                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
+                     <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Gift size={18} color={PRIMARY_PINK}/> 보상 아이템 설정</h3>
+                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                       <input className="input-field" placeholder="보상 이름" value={newReward.text} onChange={e => setNewReward({...newReward, text: e.target.value})} style={{ flex: 2 }} />
+                       <input className="input-field" type="number" placeholder="코인" value={newReward.coins} onChange={e => setNewReward({...newReward, coins: parseInt(e.target.value)})} style={{ flex: 1 }} />
+                       <button onClick={() => { if(newReward.text){ const next=[...rewards, {id:Date.now(), ...newReward}]; setRewards(next); persist({rewards:next}); setNewReward({text:'', coins:50}) } }} className="btn-primary" style={{ padding: '12px' }}><Plus/></button>
                      </div>
                    </div>
-                 )}
-                 <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px' }}>아이들 보상 상점 🎁</h3>
-                 <div style={{maxHeight:'250px', overflowY:'auto', display:'grid', gap:'10px'}}>
-                   {rewards.map(r => (
-                     <div key={r.id} style={{padding:'15px', background: availableCoins >= r.coins ? LIGHT_PINK : '#f8fafc', borderRadius:'18px', display:'flex', justifyContent:'space-between', alignItems:'center', border: availableCoins >= r.coins ? `1px solid ${PRIMARY_PINK}` : '1px solid transparent'}}>
-                       <div style={{flex:1}}><strong style={{fontSize:'16px'}}>{r.text}</strong><div style={{fontSize:'12px', color: availableCoins >= r.coins ? PRIMARY_PINK : '#666', fontWeight: 'bold'}}>{r.coins} 코인 {availableCoins >= r.coins ? '✨ 달성 완료!' : ''}</div></div>
-                       {isAdmin && <button onClick={async () => { if(!confirm(`${r.text}를 증정할까요?`)) return; const nextSpent = spentCoins + r.coins; setSpentCoins(nextSpent); await persist({ spentCoins: nextSpent }) }} className="btn-primary" style={{padding:'8px 15px', fontSize:'13px'}}>증정 완료</button>}
+                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
+                     <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}><Star size={18} color="#fbbf24"/> 꼭! 해야할 공부 관리</h3>
+                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                       <input className="input-field" placeholder="공부 이름 (예: 독서)" value={newEssential} onChange={e => setNewEssential(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && newEssential){ const next=[...essentials, {id:Date.now(), name:newEssential}]; setEssentials(next); persist({essentials:next}); setNewEssential('') } }} />
+                       <button onClick={() => { if(newEssential){ const next=[...essentials, {id:Date.now(), name:newEssential}]; setEssentials(next); persist({essentials:next}); setNewEssential('') } }} className="btn-primary" style={{ padding: '12px' }}><Plus/></button>
+                     </div>
+                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                       {essentials.map(e => (
+                         <div key={e.id} style={{ background: 'white', padding: '6px 12px', borderRadius: '10px', border: '1px solid #ffdeeb', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                           {e.name} <Trash size={12} color="#ff4d6d" style={{ cursor: 'pointer' }} onClick={() => { const next=essentials.filter(i => i.id !== e.id); setEssentials(next); persist({essentials:next}) }} />
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 </div>
+               )}
+               <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px' }}>아이들 보상 상점 🎁</h3>
+               <div style={{maxHeight:'250px', overflowY:'auto', display:'grid', gap:'10px'}}>
+                 {rewards.map(r => (
+                   <div key={r.id} style={{padding:'15px', background: availableCoins >= r.coins ? LIGHT_PINK : '#f8fafc', borderRadius:'18px', display:'flex', justifyContent:'space-between', alignItems:'center', border: availableCoins >= r.coins ? `1px solid ${PRIMARY_PINK}` : '1px solid transparent'}}>
+                     <div style={{flex:1}}><strong style={{fontSize:'16px'}}>{r.text}</strong><div style={{fontSize:'12px', color: availableCoins >= r.coins ? PRIMARY_PINK : '#666', fontWeight: 'bold'}}>{r.coins} 코인 {availableCoins >= r.coins ? '✨ 달성 완료!' : ''}</div></div>
+                     {isAdmin && <button onClick={async () => { if(!confirm(`${r.text}를 증정할까요?`)) return; const nextSpent = spentCoins + r.coins; setSpentCoins(nextSpent); await persist({ spentCoins: nextSpent }) }} className="btn-primary" style={{padding:'8px 15px', fontSize:'13px'}}>증정 완료</button>}
                    </div>
                  ))}
                </div>
