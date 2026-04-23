@@ -323,7 +323,7 @@ function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, essentialCheckli
           
           {essentialChecklist && essentialChecklist.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 12px', background: 'white', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.03)' }}>
-              <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap' }}>오늘의 필수!</span>
+              <span style={{ fontSize: '12px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap' }}>꼭!</span>
               {essentialChecklist.map(e => (
                 <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                   {e.completed ? <Heart size={13} fill="#ff4d6d" color="#ff4d6d" className="animate-pulse" /> : <div style={{ width: '11px', height: '11px', borderRadius: '3px', border: '1.5px solid #ff4d6d', opacity: 0.4 }} />}

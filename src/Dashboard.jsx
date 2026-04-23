@@ -214,31 +214,33 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if (d?.type === 'palette') setActiveDragItem({ type: 'palette', subject: d.subject }); else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={handleDragEnd}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* Modern Header */}
-        <header className="glass" style={{ padding: isMobile ? '12px 15px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '15px' }}>
-              <div style={{ position: 'relative' }}>
-                <div style={{ background: 'var(--bg-gradient)', color: 'white', padding: isMobile ? '8px' : '10px', borderRadius: '12px', boxShadow: '0 4px 10px rgba(124, 156, 255, 0.2)' }}><Star size={isMobile ? 20 : 24} /></div>
-                {todayMessage && <button onClick={() => setShowSurprise(true)} className="animate-bounce" style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', padding: '5px', cursor: 'pointer' }}><Gift size={12} /></button>}
+        {/* Compact & Responsive Header */}
+        <header className="glass" style={{ padding: isMobile ? '10px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '5px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '15px', minWidth: 0, flex: 1 }}>
+              <div style={{ position: 'relative', width: isMobile ? '36px' : '50px', height: isMobile ? '36px' : '50px', flexShrink: 0 }}>
+                <div style={{ background: 'var(--bg-gradient)', color: 'white', width: '100%', height: '100%', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(124, 156, 255, 0.2)' }}><Star size={isMobile ? 18 : 24} /></div>
+                {todayMessage && (
+                  <button onClick={() => setShowSurprise(true)} className="animate-bounce" style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', zIndex: 10 }}>
+                    <Gift size={10} />
+                  </button>
+                )}
               </div>
-              <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
+              <h1 style={{ fontSize: isMobile ? '16px' : '22px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '8px' }}>
-              <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 20 : 22}/></button>
-              {isAdmin && <button onClick={() => { setShowMessageManager(true); setMessageTarget(activeKidId); }} style={{ background: 'rgba(255, 77, 109, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: '#ff4d6d' }}><Mail size={isMobile ? 20 : 22}/></button>}
-              <button onClick={() => setShowGoals(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--primary)' }}><Trophy size={isMobile ? 20 : 22}/></button>
-              <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px' }}><Settings size={isMobile ? 20 : 22} /></button>
-              <button onClick={onLogout} style={{ background: 'rgba(244, 63, 94, 0.05)', border: 'none', padding: isMobile ? '8px' : '10px', borderRadius: '10px', color: 'var(--secondary)' }}><LogOut size={isMobile ? 20 : 22} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '3px' : '8px', flexShrink: 0 }}>
+              <button onClick={() => setShowAppLauncher(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--primary)' }}><LayoutGrid size={isMobile ? 18 : 22}/></button>
+              {isAdmin && <button onClick={() => { setShowMessageManager(true); setMessageTarget(activeKidId); }} style={{ background: 'rgba(255, 77, 109, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: '#ff4d6d' }}><Mail size={isMobile ? 18 : 22}/></button>}
+              <button onClick={() => setShowGoals(true)} style={{ background: 'rgba(124, 156, 255, 0.1)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--primary)' }}><Trophy size={isMobile ? 18 : 22}/></button>
+              <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(0,0,0,0.05)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px' }}><Settings size={isMobile ? 18 : 22} /></button>
+              <button onClick={onLogout} style={{ background: 'rgba(244, 63, 94, 0.05)', border: 'none', padding: isMobile ? '6px' : '10px', borderRadius: '8px', color: 'var(--secondary)' }}><LogOut size={isMobile ? 18 : 22} /></button>
             </div>
           </div>
 
-          {isAdmin && (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', background: 'rgba(0,0,0,0.03)', padding: '4px', borderRadius: '12px' }}>
-              {kidsList.map(id => <button key={id} onClick={() => setActiveKidId(id)} style={{ flex: 1, padding: '8px', borderRadius: '10px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '900', color: activeKidId === id ? 'var(--primary)' : 'var(--text-muted)', fontSize: '13px', boxShadow: activeKidId === id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}>{allUsers[id]?.displayName || id}</button>)}
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: '6px', marginTop: '10px', background: 'rgba(0,0,0,0.03)', padding: '3px', borderRadius: '10px' }}>
+            {kidsList.map(id => <button key={id} onClick={() => setActiveKidId(id)} style={{ flex: 1, padding: '7px', borderRadius: '8px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '900', color: activeKidId === id ? 'var(--primary)' : 'var(--text-muted)', fontSize: '12px', boxShadow: activeKidId === id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}>{allUsers[id]?.displayName || id}</button>)}
+          </div>
         </header>
 
         {/* Date Selector */}
@@ -272,7 +274,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           <main><TimeGrid tasks={todayTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} essentialChecklist={essentialChecklist} /></main>
         </div>
 
-        {/* Modals - launcher, message manager, surprise view, goals, settings */}
+        {/* Modals */}
         {showAppLauncher && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-bounce-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
