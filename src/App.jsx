@@ -1,32 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  createUserWithEmailAndPassword,
-  EmailAuthProvider,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  signInWithEmailAndPassword,
-  signOut,
-  updatePassword
-} from 'firebase/auth'
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import React, { useEffect, useRef, useState } from 'react'
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { doc, onSnapshot } from 'firebase/firestore'
 import Dashboard from './Dashboard.jsx'
 import { auth, db } from './firebase'
-
-const HOUSEHOLD_ID = 'SJH-SGB'
-const ACCOUNTS = {
-  'yhhojt970': { name: '엄마', role: 'admin', badge: 'Manager', mascot: '👩‍🏫', background: 'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)', accent: '#e11d48', displayName: '엄마' },
-  'sjh123': { name: '손지희', role: 'child', badge: 'Student', mascot: '🌸', background: 'linear-gradient(135deg, #fff5f7 0%, #fff0f3 100%)', accent: '#db2777', displayName: '손지희' },
-  'sgb456': { name: '손가빈', role: 'child', badge: 'Student', mascot: '🐥', background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)', accent: '#d97706', displayName: '손가빈' }
-}
-
-const normalizeIdToEmail = (id) => `${id.trim().toLowerCase()}@kidschedule.local`
 
 export default function App() {
   const [authUser, setAuthUser] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [allUsers, setAllUsers] = useState({})
+  const [household, setHousehold] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [mode, setMode] = useState('login') 
+  
+  const [loginFamilyId, setLoginFamilyId] = useState('SJH-SGB')
   const [loginId, setLoginId] = useState('')
   const [loginPw, setLoginPw] = useState('')
   const [message, setMessage] = useState('')
@@ -34,112 +18,63 @@ export default function App() {
 
   const unsubRef = useRef({ profile: null, household: null })
 
+  // Force load to prevent white screen
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (nextUser) => {
-      setAuthUser(nextUser || null)
-      if (!nextUser) {
-        setLoading(false)
-        setProfile(null)
-      }
+    const t = setTimeout(() => { if (loading) setLoading(false) }, 3000)
+    return () => clearTimeout(t)
+  }, [loading])
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      setAuthUser(u || null)
+      if (!u) { setLoading(false); setProfile(null); setHousehold(null); }
     })
-    return () => unsub()
   }, [])
 
   useEffect(() => {
     if (unsubRef.current.profile) unsubRef.current.profile()
-    if (unsubRef.current.household) unsubRef.current.household()
-    unsubRef.current = { profile: null, household: null }
-    setProfile(null)
-    setAllUsers({})
-
     if (!authUser?.uid) return
-
-    const profileRef = doc(db, 'users', authUser.uid)
-    unsubRef.current.profile = onSnapshot(profileRef, (snap) => {
+    const ref = doc(db, 'users', authUser.uid)
+    unsubRef.current.profile = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
-        setProfile(snap.data())
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
-
-    const householdRef = doc(db, 'households', HOUSEHOLD_ID)
-    unsubRef.current.household = onSnapshot(householdRef, (snap) => {
-      if (snap.exists()) {
-        setAllUsers(snap.data().people || {})
-      }
-      setLoading(false)
-    })
-
-    return () => {
-      if (unsubRef.current.profile) unsubRef.current.profile()
-      if (unsubRef.current.household) unsubRef.current.household()
-    }
+        const data = snap.data()
+        setProfile(data)
+        if (!data.householdId) setLoading(false)
+      } else { setProfile(null); setLoading(false); }
+    }, () => setLoading(false))
   }, [authUser?.uid])
 
-  const user = useMemo(() => {
-    if (!profile?.name) return null
-    return { id: profile.name, role: profile.role }
-  }, [profile?.name, profile?.role])
+  useEffect(() => {
+    if (unsubRef.current.household) unsubRef.current.household()
+    if (!profile?.householdId) return
+    const ref = doc(db, 'households', profile.householdId)
+    unsubRef.current.household = onSnapshot(ref, (snap) => {
+      if (snap.exists()) setHousehold(snap.data())
+      setLoading(false)
+    }, () => setLoading(false))
+  }, [profile?.householdId])
 
   const handleLogin = async () => {
-    const rawId = (loginId || '').trim()
-    if (!rawId || !loginPw) {
-      setMessage('카드 선택 후 비밀번호를 입력해 주세요.')
-      return
-    }
+    if (!loginId || !loginPw) { setMessage('아이디와 비밀번호를 입력하세요.'); return }
     setBusy(true); setMessage('')
     try {
-      await signInWithEmailAndPassword(auth, normalizeIdToEmail(rawId), loginPw)
-    } catch (error) {
-      setMessage('로그인 실패! 비밀번호를 확인해 주세요.')
-    } finally { setBusy(false) }
+      const email = `${loginId.trim().toLowerCase()}@kidschedule.local`
+      await signInWithEmailAndPassword(auth, email, loginPw)
+    } catch (e) { setMessage('로그인 실패!') } finally { setBusy(false) }
   }
 
-  const handleRegister = async () => {
-    const rawId = (loginId || '').trim()
-    if (!rawId || !loginPw) { setMessage('카드 선택 후 비밀번호를 입력해 주세요.'); return }
-    setBusy(true); setMessage('')
-    try {
-      const userRes = await createUserWithEmailAndPassword(auth, normalizeIdToEmail(rawId), loginPw)
-      const acc = ACCOUNTS[rawId]
-      await setDoc(doc(db, 'users', userRes.user.uid), {
-        uid: userRes.user.uid, loginId: rawId, householdId: HOUSEHOLD_ID,
-        role: acc.role, name: acc.name, createdAt: serverTimestamp()
-      })
-      setMessage('계정 생성 성공! 이제 로그인 하세요.'); setMode('login')
-    } catch (error) { setMessage('실패! 이미 계정이 있을 수 있습니다.'); } finally { setBusy(false) }
-  }
+  if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff4d6d', fontWeight: 'bold' }}>잠시만 기다려 주세요... 🌷</div>
 
-  if (loading) return <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', color:'#ff4d6d', fontWeight:'bold'}}>로딩 중... 🌷</div>
-
-  if (!authUser?.uid || !user) {
+  if (!authUser || !profile) {
     return (
-      <div className="login-shell">
-        <div className="login-layout">
-          <section className="login-hero">
-            <h1 className="login-title">우리 가족 시간표</h1>
-            <div className="account-grid">
-              {Object.entries(ACCOUNTS).map(([id, info]) => (
-                <button key={id} className={`account-card ${loginId === id ? 'account-card-active' : ''}`} style={{ background: info.background }} onClick={() => setLoginId(id)}>
-                  <div className="account-mascot">{info.mascot}</div>
-                  <div className="account-name">{info.displayName}</div>
-                </button>
-              ))}
-            </div>
-          </section>
-          <section className="login-panel glass">
-            <div className="login-panel-tabs">
-                <button className={mode === 'login' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('login')}>로그인</button>
-                <button className={mode === 'register' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('register')}>계정 만들기</button>
-            </div>
-            <div className="login-panel-box">
-              <input className="input-field cute-input" placeholder="비밀번호" type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
-              {message && <div style={{color:'#ff4d6d', fontSize:'12px', marginTop:'10px'}}>{message}</div>}
-              <button className="login-submit" disabled={busy} onClick={mode === 'login' ? handleLogin : handleRegister}>{busy ? '잠깐만...' : '들어가기'}</button>
-            </div>
-          </section>
+      <div style={{ padding: '60px 20px', maxWidth: '400px', margin: '0 auto', textAlign: 'center' }}>
+        <h1 style={{ color: '#ff4d6d', fontSize: '24px', fontWeight: '900', marginBottom: '40px' }}>지희 가빈 스케줄</h1>
+        <div style={{ display: 'grid', gap: '12px' }}>
+            <input style={{ padding: '16px', borderRadius: '15px', border: '1px solid #ffdeeb' }} placeholder="가족 코드 (예: SJH-SGB)" value={loginFamilyId} onChange={e => setLoginFamilyId(e.target.value.toUpperCase())} />
+            <input style={{ padding: '16px', borderRadius: '15px', border: '1px solid #ffdeeb' }} placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)} />
+            <input style={{ padding: '16px', borderRadius: '15px', border: '1px solid #ffdeeb' }} type="password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)} />
+            <button onClick={handleLogin} disabled={busy} style={{ padding: '16px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '15px', fontWeight: '900', fontSize: '18px' }}>로그인</button>
+            {message && <div style={{ color: 'red', fontSize: '13px', marginTop: '10px' }}>{message}</div>}
         </div>
       </div>
     )
@@ -147,10 +82,10 @@ export default function App() {
 
   return (
     <Dashboard
-      user={user}
-      onLogout={() => signOut(auth)}
-      allUsers={allUsers}
-      cloud={{ db, householdId: HOUSEHOLD_ID }}
+      user={{ id: profile.name || profile.loginId, role: profile.role }}
+      onLogout={() => { signOut(auth); setLoading(false); }}
+      allUsers={household?.people || {}}
+      cloud={{ db, householdId: profile.householdId }}
     />
   )
 }
