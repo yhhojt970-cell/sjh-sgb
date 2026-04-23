@@ -445,7 +445,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const copyToTomorrow = () => {
     const todayStr = format(selectedDate, 'yyyy-MM-dd')
     const tomorrowStr = format(addDays(selectedDate, 1), 'yyyy-MM-dd')
-    const todayTasks = (tasks || []).filter(t => t.date === todayStr)
+    const todayTasks = (tasks || []).filter(t => t.date === todayStr && t.type !== 'class')
     
     if (todayTasks.length === 0) return alert('오늘 계획이 없어요!')
     
