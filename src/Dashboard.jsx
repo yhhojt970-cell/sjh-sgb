@@ -3,10 +3,10 @@ import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSe
 import { arrayMove } from '@dnd-kit/sortable'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
-import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw, Mail, Send, X as CloseIcon, AppWindow, ExternalLink, Trash, Sparkles, Calendar, Heart, CheckCircle } from 'lucide-react'
+import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw, Mail, Send, X as CloseIcon, AppWindow, ExternalLink, Trash, Sparkles, Calendar, Heart, CheckCircle, MessageCircle } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
-import { ko } from 'date-fns/locale'
-import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { ko } from 'date-fns,locale'
+import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 
 const APP_COLORS = [
   'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
@@ -53,8 +53,8 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [showPalette, setShowPalette] = useState(false) 
   
   const [newGoal, setNewGoal] = useState('')
-  const [newWish, setNewWish] = useState('')
   const [newMessage, setNewMessage] = useState('')
+  const [replyMessage, setReplyMessage] = useState('')
   const [messageDate, setMessageDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [messageTarget, setMessageTarget] = useState('')
   
@@ -63,7 +63,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [passwordMessage, setPasswordMessage] = useState('')
   const [passwordBusy, setPasswordBusy] = useState(false)
 
-  const [bulkInput, setBulkInput] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
   const [paletteSubjects, setPaletteSubjects] = useState([])
 
@@ -82,7 +81,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   useEffect(() => {
     if (!activeKidId) return
     if (!isCloud) {
-      setTasks(loadState(`tasks_${activeKidId}`, [])); setGoals(loadState(`goals_${activeKidId}`, [])); setWishes(loadState(`wishes_${activeKidId}`, [])); setMessages(loadState(`messages_${activeKidId}`, [])); setStudyApps(loadState('study_apps', [])); setEssentials(loadState(`essentials_${activeKidId}`, []))
+      setTasks(loadState(`tasks_${activeKidId}`, [])); setGoals(loadState(`goals_${activeKidId}`, [])); setMessages(loadState(`messages_${activeKidId}`, [])); setStudyApps(loadState('study_apps', [])); setEssentials(loadState(`essentials_${activeKidId}`, []))
       return
     }
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
@@ -90,7 +89,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       const data = snap.exists() ? snap.data() : {}; 
       setTasks(Array.isArray(data?.tasks) ? data.tasks : []); 
       setGoals(Array.isArray(data?.goals) ? data.goals : []); 
-      setWishes(Array.isArray(data?.wishes) ? data.wishes : []);
       setEssentials(Array.isArray(data?.essentials) ? data.essentials : []) 
     })
     
@@ -105,7 +103,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const persistActiveKidState = async (overrides = {}) => {
     if (!isCloud || !activeKidId) return
-    const payload = { tasks: overrides.tasks ?? tasks ?? [], goals: overrides.goals ?? goals ?? [], wishes: overrides.wishes ?? wishes ?? [], essentials: overrides.essentials ?? essentials ?? [] }
+    const payload = { tasks: overrides.tasks ?? tasks ?? [], goals: overrides.goals ?? goals ?? [], essentials: overrides.essentials ?? essentials ?? [] }
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
     await setDoc(ref, { ...payload, updatedAt: serverTimestamp() }, { merge: true })
   }
@@ -159,12 +157,34 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const sendSurpriseMessage = async () => {
     if (!newMessage || !messageTarget) return
-    const msg = { id: Date.now(), text: newMessage, date: messageDate, kidId: messageTarget, from: user.id }
+    const msg = { id: Date.now(), text: newMessage, date: messageDate, kidId: messageTarget, from: user.id, read: false, replies: [] }
     if (isCloud) {
         const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'messages')
         await setDoc(ref, { messages: arrayUnion(msg), updatedAt: serverTimestamp() }, { merge: true })
     }
     setNewMessage(''); setShowMessageManager(false); alert('전송 완료! 💌')
+  }
+
+  const markMessageRead = async (msgId) => {
+    if (!isCloud) return
+    const next = messages.map(m => m.id === msgId ? { ...m, read: true } : m)
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'messages')
+    await setDoc(ref, { messages: next, updatedAt: serverTimestamp() }, { merge: true })
+  }
+
+  const addMessageReply = async (msgId) => {
+    if (!replyMessage || !isCloud) return
+    const next = messages.map(m => m.id === msgId ? { ...m, replies: [...(m.replies || []), { from: user.id, text: replyMessage, time: format(new Date(), 'HH:mm') }] } : m)
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'messages')
+    await setDoc(ref, { messages: next, updatedAt: serverTimestamp() }, { merge: true })
+    setReplyMessage(''); alert('답장을 보냈어요! ❤️')
+  }
+
+  const deleteMessage = async (msgId) => {
+    if (!confirm('정말 삭제할까요?')) return
+    const next = messages.filter(m => m.id !== msgId)
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'messages')
+    await setDoc(ref, { messages: next, updatedAt: serverTimestamp() }, { merge: true })
   }
 
   const submitPasswordChange = async () => {
@@ -199,6 +219,9 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const isAdmin = user?.role === 'admin'
   const kidsList = Object.keys(allUsers || {}).filter(id => allUsers[id].role === 'child')
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i))
+  
+  // Only show notification if unread and for today
+  const unreadMessage = useMemo(() => (messages || []).find(m => m.date === format(selectedDate, 'yyyy-MM-dd') && m.kidId === activeKidId && !m.read), [messages, selectedDate, activeKidId])
   const todayMessage = useMemo(() => (messages || []).find(m => m.date === format(selectedDate, 'yyyy-MM-dd') && m.kidId === activeKidId), [messages, selectedDate, activeKidId])
 
   const todayTasks = useMemo(() => tasks.filter(t => (t.type === 'class' && t.weekday === getDay(selectedDate)) || (t.date === format(selectedDate, 'yyyy-MM-dd'))), [tasks, selectedDate])
@@ -214,15 +237,20 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if (d?.type === 'palette') setActiveDragItem({ type: 'palette', subject: d.subject }); else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={handleDragEnd}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* Compact & Responsive Header */}
+        {/* Modern Header */}
         <header className="glass" style={{ padding: isMobile ? '10px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '5px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '15px', minWidth: 0, flex: 1 }}>
               <div style={{ position: 'relative', width: isMobile ? '36px' : '50px', height: isMobile ? '36px' : '50px', flexShrink: 0 }}>
                 <div style={{ background: 'var(--bg-gradient)', color: 'white', width: '100%', height: '100%', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(124, 156, 255, 0.2)' }}><Star size={isMobile ? 18 : 24} /></div>
-                {todayMessage && (
-                  <button onClick={() => setShowSurprise(true)} className="animate-bounce" style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', zIndex: 10 }}>
+                {unreadMessage && (
+                  <button onClick={() => { setShowSurprise(true); markMessageRead(unreadMessage.id); }} className="animate-bounce" style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', zIndex: 10 }}>
                     <Gift size={10} />
+                  </button>
+                )}
+                {!unreadMessage && todayMessage && (
+                  <button onClick={() => setShowSurprise(true)} style={{ position: 'absolute', bottom: '-2px', right: '-2px', background: '#4ade80', color: 'white', border: 'none', borderRadius: '50%', width: '14px', height: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', zIndex: 10 }}>
+                    <CheckCircle size={10} />
                   </button>
                 )}
               </div>
@@ -243,6 +271,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </div>
         </header>
 
+        {/* Date Selector, Actions, Grid... (Skipping repetitive parts for brevity but keeping structure) */}
         {/* Date Selector */}
         <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: isMobile ? '12px' : '20px', marginBottom: '15px', boxShadow: 'var(--shadow)' }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
@@ -274,7 +303,66 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           <main><TimeGrid tasks={todayTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} essentialChecklist={essentialChecklist} /></main>
         </div>
 
-        {/* Modals */}
+        {/* Message Manager Modal (Mom's Log) */}
+        {showMessageManager && isAdmin && (
+           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '450px', width: '100%', boxSizing: 'border-box', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>메시지 관리 & 로그</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
+                
+                <div style={{ display: 'grid', gap: '10px', marginBottom: '25px' }}>
+                  <select className="input-field" style={{ width: '100%', boxSizing: 'border-box' }} value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
+                  <input type="date" className="input-field" style={{ width: '100%', boxSizing: 'border-box', display: 'block' }} value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
+                  <textarea className="input-field" style={{ height: '80px', width: '100%', boxSizing: 'border-box' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d', width: '100%' }}>깜짝 메시지 전송</button>
+                </div>
+
+                <div style={{ borderTop: '1px solid #eee', paddingTop: '20px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: '900', marginBottom: '12px' }}>전송 히스토리 📝</h3>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    {[...(messages || [])].reverse().map(m => (
+                      <div key={m.id} style={{ background: '#f8fafc', padding: '12px', borderRadius: '15px', position: 'relative' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#64748b' }}>{m.date} - {allUsers[m.kidId]?.displayName || m.kidId}</span>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: m.read ? '#e2e8f0' : '#ffedef', color: m.read ? '#64748b' : '#ff4d6d', fontWeight: '800' }}>{m.read ? '읽음' : '안읽음'}</span>
+                            <button onClick={() => deleteMessage(m.id)} style={{ background: 'none', border: 'none', color: '#94a3b8' }}><Trash size={12}/></button>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: '13px', margin: 0, color: '#334155' }}>{m.text}</p>
+                        {m.replies && m.replies.length > 0 && (
+                          <div style={{ marginTop: '8px', padding: '8px', background: 'white', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                            {m.replies.map((r, i) => (
+                              <div key={i} style={{ fontSize: '12px', color: '#ff4d6d', fontWeight: '800' }}>💬 답장: {r.text} <span style={{ fontSize: '10px', fontWeight: '400', color: '#94a3b8' }}>({r.time})</span></div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+             </div>
+           </div>
+        )}
+
+        {/* Surprise View (Child's View + Reply) */}
+        {showSurprise && todayMessage && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+            <div className="glass animate-bounce-in" style={{ background: 'white', padding: '30px', borderRadius: '30px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
+              <div style={{ background: 'linear-gradient(135deg, #ff4d6d, #ff8fa3)', color: 'white', width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}><Sparkles size={36} /></div>
+              <h2 style={{ fontSize: '22px', fontWeight: '900', marginBottom: '15px' }}>엄마의 깜짝 편지! 💌</h2>
+              <div style={{ fontSize: '17px', lineHeight: '1.6', background: '#fff0f3', padding: '20px', borderRadius: '20px', whiteSpace: 'pre-wrap', marginBottom: '20px', color: '#d63384', fontWeight: '700' }}>{todayMessage.text}</div>
+              
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                <input className="input-field" style={{ flex: 1, borderRadius: '12px' }} placeholder="엄마에게 답장하기..." value={replyMessage} onChange={(e) => setReplyMessage(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addMessageReply(todayMessage.id)} />
+                <button onClick={() => addMessageReply(todayMessage.id)} style={{ background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '12px', padding: '0 15px' }}><Send size={18}/></button>
+              </div>
+
+              <button onClick={() => setShowSurprise(false)} className="btn-primary" style={{ background: 'rgba(0,0,0,0.05)', color: '#666', border: 'none', borderRadius:'15px' }}>닫기</button>
+            </div>
+          </div>
+        )}
+
+        {/* Goals, Settings, App Launcher Modals... */}
         {showAppLauncher && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-bounce-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
@@ -291,31 +379,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                 ))}
                 {isAdmin && <button onClick={addStudyApp} style={{ width: '100%', aspectRatio: '1/1', border: '2px dashed #ddd', borderRadius: '20px', background: 'none' }}><Plus size={24} color="#aaa"/></button>}
               </div>
-            </div>
-          </div>
-        )}
-
-        {showMessageManager && isAdmin && (
-           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>깜짝 메시지</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <select className="input-field" style={{ width: '100%', boxSizing: 'border-box' }} value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
-                  <input type="date" className="input-field" style={{ width: '100%', boxSizing: 'border-box', display: 'block' }} value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
-                  <textarea className="input-field" style={{ height: '100px', width: '100%', boxSizing: 'border-box' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
-                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d', width: '100%' }}>전송</button>
-                </div>
-             </div>
-           </div>
-        )}
-
-        {showSurprise && todayMessage && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-            <div className="glass animate-bounce-in" style={{ background: 'white', padding: '30px', borderRadius: '30px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
-              <div style={{ background: 'linear-gradient(135deg, #ff4d6d, #ff8fa3)', color: 'white', width: '70px', height: '70px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}><Sparkles size={36} /></div>
-              <h2 style={{ fontSize: '22px', fontWeight: '900', marginBottom: '15px' }}>엄마의 깜짝 편지! 💌</h2>
-              <div style={{ fontSize: '17px', lineHeight: '1.6', background: '#fff0f3', padding: '20px', borderRadius: '20px', whiteSpace: 'pre-wrap', marginBottom: '20px', color: '#d63384', fontWeight: '700' }}>{todayMessage.text}</div>
-              <button onClick={() => setShowSurprise(false)} className="btn-primary" style={{ background: '#ff4d6d', border: 'none', borderRadius:'15px' }}>사랑해요! ❤️</button>
             </div>
           </div>
         )}
