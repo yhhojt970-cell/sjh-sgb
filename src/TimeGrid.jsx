@@ -120,13 +120,12 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
   }
 
   return (
-    <div ref={setNodeRef} className="glass animate-fade-in" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
+    <div ref={setNodeRef} className="glass animate-fade-in task-card" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
       padding: '14px',
       borderRadius: 'var(--radius-md)',
       background: isFixed ? 'rgba(139, 92, 246, 0.08)' : 'white',
       borderLeft: `6px solid ${task.color}`,
-      minWidth: 'min(280px, 100%)',
-      width: '100%',
+      minWidth: '280px',
       boxShadow: 'var(--shadow)',
       position: 'relative',
       opacity: isDragging ? 0.35 : task.completed ? 0.7 : 1,

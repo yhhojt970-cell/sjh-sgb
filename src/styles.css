@@ -105,6 +105,10 @@ body{
   font-weight: 700;
 }
 
+.task-card{
+  width: auto;
+}
+
 .animate-fade-in{
   animation: fadeIn 0.2s ease-out;
 }
@@ -450,6 +454,11 @@ body{
 
   .time-slot-body{
     padding: 8px !important;
+  }
+
+  .task-card{
+    min-width: 0 !important;
+    width: 100%;
   }
 
   .icon-add-button{
