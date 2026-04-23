@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSe
 import { arrayMove } from '@dnd-kit/sortable'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
-import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw, Mail, Send, X as CloseIcon, AppWindow, ExternalLink, Trash, Sparkles } from 'lucide-react'
+import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw, Mail, Send, X as CloseIcon, AppWindow, ExternalLink, Trash, Sparkles, Calendar } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
