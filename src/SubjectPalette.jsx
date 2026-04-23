@@ -62,7 +62,7 @@ function PaletteItem({ subject, onSave, onDelete }) {
         <span>{subject.name}</span>
         <span style={{ display: 'flex', gap: '6px' }}>
           <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: 'var(--text-muted)', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}><Edit2 size={12} /></button>
-          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(subject.name, subject.kidId); }} style={{ border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}><Trash2 size={12} /></button>
+          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if(confirm(`${subject.name} 과목을 삭제할까요?`)) onDelete(subject.name, subject.kidId); }} style={{ border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', borderRadius: '8px', padding: '4px 6px', cursor: 'pointer' }}><Trash2 size={12} /></button>
         </span>
       </div>
     </div>
@@ -88,12 +88,20 @@ export function SubjectPalette({ cloud, activeKidId, kids, onSubjectsChange }) {
 
   useEffect(() => { if (onSubjectsChange) onSubjectsChange(subjects) }, [subjects, onSubjectsChange])
 
-  const persist = (nextOrUpdater) => {
-    setSubjects((prev) => {
-      const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev || []) : nextOrUpdater
-      if (!isCloud) localStorage.setItem('kid_app_subjects', JSON.stringify(next))
-      return next
-    })
+  // Improved persist: Write to Firestore immediately to avoid race conditions
+  const persist = async (nextOrUpdater) => {
+    const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(subjects || []) : nextOrUpdater
+    setSubjects(next)
+    
+    if (isCloud) {
+      try {
+        const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
+        lastSyncedRef.current = JSON.stringify(next) // Prevent useEffect from triggering again
+        await setDoc(ref, { subjects: next, updatedAt: serverTimestamp() }, { merge: true })
+      } catch (e) { console.error('Failed to save subjects:', e) }
+    } else {
+      localStorage.setItem('kid_app_subjects', JSON.stringify(next))
+    }
   }
 
   const updateSubject = (prevName, prevKidId, nextSubject) => {
@@ -114,40 +122,32 @@ export function SubjectPalette({ cloud, activeKidId, kids, onSubjectsChange }) {
       const data = snap.exists() ? snap.data() : {}
       const raw = Array.isArray(data?.subjects) ? data.subjects : DEFAULT_SUBJECTS
       
-      // Migration Fix: Ensure we write back to Firestore if shared subjects are found
       if (kids && kids.length > 0 && raw.some(s => !s.kidId)) {
         const migrated = []
         raw.forEach(s => {
           if (!s.kidId) kids.forEach(kid => migrated.push({ ...s, kidId: kid }))
           else migrated.push(s)
         })
-        console.log('Migrating and saving subjects to Firestore...')
         await setDoc(ref, { subjects: migrated, updatedAt: serverTimestamp() }, { merge: true })
-        // The snapshot listener will trigger again with the migrated data.
         return
       }
 
       const json = JSON.stringify(raw || [])
-      lastSyncedRef.current = json
-      readyRef.current = true
-      setSubjects(raw)
+      // Only update local state if the incoming data is different from what we just sent
+      if (json !== lastSyncedRef.current) {
+        lastSyncedRef.current = json
+        readyRef.current = true
+        setSubjects(raw)
+      } else {
+        readyRef.current = true
+      }
     })
   }, [isCloud, cloud?.db, cloud?.householdId, kids])
 
-  useEffect(() => {
-    if (!isCloud || !readyRef.current) return
-    const json = JSON.stringify(subjects || [])
-    if (json === lastSyncedRef.current) return
-    const t = setTimeout(async () => {
-      const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
-      await setDoc(ref, { subjects: subjects || [], updatedAt: serverTimestamp() }, { merge: true })
-      lastSyncedRef.current = json
-    }, 400)
-    return () => clearTimeout(t)
-  }, [isCloud, cloud?.db, cloud?.householdId, subjects])
+  // Removed the debounced useEffect as we now write directly in persist()
 
   const list = useMemo(() => (subjects || []).filter((s) => s?.name && s.kidId === activeKidId), [subjects, activeKidId])
-  const listIds = useMemo(() => list.map(s => `palette-${s.name}-${s.kidId || 'shared'}`), [list])
+  const listIds = useMemo(() => list.map(s => `palette-${s.name}-${s.kidId}`), [list])
 
   return (
     <div style={{ padding: '18px' }}>

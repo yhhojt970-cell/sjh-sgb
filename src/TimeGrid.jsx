@@ -22,19 +22,19 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       ref={setNodeRef}
       style={{
         display: 'flex',
-        minHeight: '100px',
+        minHeight: hourTasks.length > 0 ? '100px' : '45px',
         borderBottom: '1px solid rgba(0,0,0,0.05)',
         background: isOver
           ? 'rgba(139, 92, 246, 0.08)'
           : hourTasks.length
             ? 'transparent'
             : 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255, 244, 248, 0.9))',
-        transition: 'background 0.2s ease'
+        transition: 'all 0.2s ease'
       }}
     >
       <div style={{
         width: '70px',
-        padding: '15px 10px',
+        padding: hourTasks.length > 0 ? '15px 10px' : '12px 10px',
         fontSize: '13px',
         fontWeight: '700',
         color: 'var(--text-muted)',
@@ -43,7 +43,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       }}>
         {hour < 10 ? `0${hour}` : hour}:00
       </div>
-      <div className="time-slot-body" style={{ flex: 1, padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
+      <div className="time-slot-body" style={{ flex: 1, padding: hourTasks.length > 0 ? '10px' : '4px 10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
         {hourTasks.map(task => (
           <TaskCard 
             key={task.id} 
