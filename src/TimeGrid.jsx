@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy, CalendarOff, UserMinus, Sparkles } from 'lucide-react'
+import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy, CalendarOff, UserMinus, Sparkles, Heart } from 'lucide-react'
 
 const ICON_MAP = { Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star }
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7) // 7 to 24
@@ -95,15 +95,18 @@ export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, o
   return (
     <div style={{ background: 'white', borderRadius: '24px', overflow: 'hidden', border: '1px solid #ffdeeb' }}>
       <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '15px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900', color: '#333', whiteSpace: 'nowrap' }}><Clock color={PRIMARY_PINK} /> 오늘 스케줄</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '900', color: '#333', whiteSpace: 'nowrap' }}><Clock color={PRIMARY_PINK} /> 꼭</div>
         
-        {/* 'MUST' (꼭!) Checklist - Horizontal Scroll */}
+        {/* 'MUST' (꼭!) Checklist - Linked with Tasks (Heart Effect) */}
         <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-           {essentialChecklist.map(item => (
-             <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: '#fff', border: '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: PRIMARY_PINK, boxShadow: '0 2px 6px rgba(255, 77, 109, 0.05)' }}>
-               꼭! {item.name}
-             </div>
-           ))}
+           {essentialChecklist.map(item => {
+             const isDone = tasks.some(t => t.name.includes(item.name) && t.completed)
+             return (
+               <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: isDone ? LIGHT_PINK : '#fff', border: isDone ? `1px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: isDone ? PRIMARY_PINK : '#999', boxShadow: '0 2px 6px rgba(255, 77, 109, 0.05)', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.3s ease' }}>
+                 {isDone ? <Heart size={12} fill={PRIMARY_PINK} color={PRIMARY_PINK}/> : null} {item.name}
+               </div>
+             )
+           })}
         </div>
         
         <div style={{ fontSize: '10px', color: '#999', whiteSpace: 'nowrap' }}>💡 꾹 누르면 특별일정</div>
