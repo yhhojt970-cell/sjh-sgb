@@ -214,7 +214,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if (d?.type === 'palette') setActiveDragItem({ type: 'palette', subject: d.subject }); else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={handleDragEnd}>
       <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* Clean Header */}
+        {/* Modern Header */}
         <header className="glass" style={{ padding: isMobile ? '12px 15px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '15px' }}>
@@ -272,22 +272,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           <main><TimeGrid tasks={todayTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} essentialChecklist={essentialChecklist} /></main>
         </div>
 
-        {/* Message Manager Modal */}
-        {showMessageManager && isAdmin && (
-           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>깜짝 메시지</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <select className="input-field" style={{ width: '100%', boxSizing: 'border-box' }} value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
-                  <input type="date" className="input-field" style={{ width: '100%', boxSizing: 'border-box', display: 'block' }} value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
-                  <textarea className="input-field" style={{ height: '100px', width: '100%', boxSizing: 'border-box' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
-                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d', width: '100%' }}>전송</button>
-                </div>
-             </div>
-           </div>
-        )}
-
-        {/* Other Modals (Launcher, Surprise View, Goals, Settings) */}
+        {/* Modals - launcher, message manager, surprise view, goals, settings */}
         {showAppLauncher && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
             <div className="glass animate-bounce-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
@@ -306,6 +291,20 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
               </div>
             </div>
           </div>
+        )}
+
+        {showMessageManager && isAdmin && (
+           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+             <div className="glass animate-fade-in" style={{ background: 'white', padding: '25px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}><h2 style={{ fontSize: '18px', fontWeight: '900', color: '#ff4d6d' }}>깜짝 메시지</h2><button onClick={() => setShowMessageManager(false)} style={{ background: 'none', border: 'none' }}><CloseIcon size={20}/></button></div>
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  <select className="input-field" style={{ width: '100%', boxSizing: 'border-box' }} value={messageTarget} onChange={(e) => setMessageTarget(e.target.value)}><option value="">아이 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
+                  <input type="date" className="input-field" style={{ width: '100%', boxSizing: 'border-box', display: 'block' }} value={messageDate} onChange={(e) => setMessageDate(e.target.value)} />
+                  <textarea className="input-field" style={{ height: '100px', width: '100%', boxSizing: 'border-box' }} placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+                  <button onClick={sendSurpriseMessage} className="btn-primary" style={{ background: '#ff4d6d', width: '100%' }}>전송</button>
+                </div>
+             </div>
+           </div>
         )}
 
         {showSurprise && todayMessage && (
