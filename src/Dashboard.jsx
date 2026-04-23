@@ -5,7 +5,7 @@ import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw, Mail, Send, X as CloseIcon, AppWindow, ExternalLink, Trash, Sparkles, Calendar, Heart, CheckCircle, MessageCircle } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
-import { ko } from 'date-fns,locale'
+import { ko } from 'date-fns/locale'
 import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 
 const APP_COLORS = [
