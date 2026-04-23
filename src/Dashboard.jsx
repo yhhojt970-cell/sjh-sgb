@@ -227,12 +227,18 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                 
                 {/* Essentials Header Checklist */}
                 {essentialChecklist.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 10px', background: 'rgba(255, 77, 109, 0.05)', borderRadius: '12px', overflowX: 'auto', maxWidth: isMobile ? '200px' : 'none', scrollbarWidth: 'none' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap' }}>꼭!</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 12px', background: 'rgba(255, 77, 109, 0.08)', borderRadius: '14px', overflowX: 'auto', maxWidth: isMobile ? '220px' : 'none', scrollbarWidth: 'none' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap', marginRight: '4px' }}>꼭!</span>
                     {essentialChecklist.map(e => (
-                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-                        {e.completed ? <Heart size={14} fill="#ff4d6d" color="#ff4d6d" /> : <div style={{ width: '12px', height: '12px', borderRadius: '3px', border: '1.5px solid #ff4d6d', opacity: 0.5 }} />}
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: e.completed ? '#ff4d6d' : 'var(--text-muted)' }}>{e.name}</span>
+                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                        {e.completed ? (
+                          <Heart size={14} fill="#ff4d6d" color="#ff4d6d" className="animate-pulse" />
+                        ) : (
+                          <div style={{ width: '13px', height: '13px', borderRadius: '4px', border: '1.5px solid #ff4d6d', opacity: 0.4 }} />
+                        )}
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: e.completed ? '#ff4d6d' : '#555' }}>
+                          {e.name || '공부'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -351,10 +357,44 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
                  <div style={{ marginBottom: '25px', padding: '20px', background: 'rgba(255, 77, 109, 0.05)', borderRadius: '20px' }}>
                    <h3 style={{ fontSize: '16px', fontWeight: '900', color: '#ff4d6d', marginBottom: '12px' }}>꼭! 해야할 공부 설정</h3>
                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                     <input className="input-field" style={{ flex: 1, padding: '10px', borderRadius: '12px' }} placeholder="공부 이름 (예: 일프로연산)" onKeyDown={(e) => { if(e.key==='Enter' && e.target.value){ applyEssentialsChange(prev => [...prev, {id:Date.now(), name:e.target.value}]); e.target.value = ''; } }} />
+                     <input 
+                       className="input-field" 
+                       style={{ flex: 1, padding: '12px', borderRadius: '15px' }} 
+                       placeholder="공부 이름을 쓰고 엔터를 누르세요 (쉼표 가능)" 
+                       onKeyDown={(e) => { 
+                         if(e.key === 'Enter' && e.target.value) { 
+                           const names = e.target.value.split(',').map(n => n.trim()).filter(n => n !== '');
+                           if(names.length > 0) {
+                             applyEssentialsChange(prev => [...prev, ...names.map(name => ({ id: Date.now() + Math.random(), name }))]);
+                             e.target.value = '';
+                           }
+                         } 
+                       }} 
+                     />
+                     <button 
+                       onClick={(e) => {
+                         const input = e.currentTarget.previousSibling;
+                         if(input.value) {
+                           const names = input.value.split(',').map(n => n.trim()).filter(n => n !== '');
+                           if(names.length > 0) {
+                             applyEssentialsChange(prev => [...prev, ...names.map(name => ({ id: Date.now() + Math.random(), name }))]);
+                             input.value = '';
+                           }
+                         }
+                       }}
+                       className="btn-primary" 
+                       style={{ width: '50px', borderRadius: '15px', background: '#ff4d6d' }}
+                     >
+                       <Plus size={20}/>
+                     </button>
                    </div>
                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                     {essentials.map(e => <div key={e.id} style={{ background: 'white', padding: '6px 12px', borderRadius: '10px', border: '1px solid #ff4d6d', color: '#ff4d6d', fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>{e.name} <Trash size={12} style={{cursor:'pointer'}} onClick={() => applyEssentialsChange(prev => prev.filter(item => item.id !== e.id))}/></div>)}
+                     {essentials.map(e => (
+                       <div key={e.id} style={{ background: 'white', padding: '8px 14px', borderRadius: '12px', border: '1px solid #ff4d6d', color: '#ff4d6d', fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 4px rgba(255, 77, 109, 0.1)' }}>
+                         {e.name} 
+                         <Trash size={14} style={{cursor:'pointer', opacity: 0.6}} onClick={() => applyEssentialsChange(prev => prev.filter(item => item.id !== e.id))}/>
+                       </div>
+                     ))}
                    </div>
                  </div>
                )}
