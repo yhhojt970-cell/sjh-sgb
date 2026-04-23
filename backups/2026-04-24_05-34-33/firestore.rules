@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myHouseholdId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.householdId;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && uid == request.auth.uid;
+    }
+
+    match /households/{hid} {
+      // Needed to allow join by group code (authenticated users only).
+      allow read: if signedIn();
+      allow write: if signedIn() && myHouseholdId() == hid;
+
+      match /{document=**} {
+        allow read, write: if signedIn() && myHouseholdId() == hid;
+      }
+    }
+  }
+}
+
