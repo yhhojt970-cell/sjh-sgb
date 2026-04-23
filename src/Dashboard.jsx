@@ -33,7 +33,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [activeDragItem, setActiveDragItem] = useState(null); // Keeping for potential future drag overlay usage
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // ABSOLUTELY STABLE SORTED LIST
+  // TRUST ORIGINAL FIRESTORE IDS FOR DATA PATHS
   const kidsList = useMemo(() => {
     const list = [];
     const seen = new Set();
@@ -42,16 +42,19 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     Object.entries(allUsers).forEach(([id, info]) => {
       const name = (info.displayName || info.name || id).toString();
       if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
-        const officialId = name.includes('지희') ? OFFICIAL.SJH : OFFICIAL.SGB;
-        if (!seen.has(officialId)) {
-          seen.add(officialId);
-          list.push(officialId);
+        if (!seen.has(id)) {
+          seen.add(id);
+          list.push(id);
         }
       }
     });
     
-    return list.sort((a, b) => a.includes('sjh') ? -1 : 1);
+    return list.sort((a, b) => {
+      const nameA = (allUsers[a]?.displayName || allUsers[a]?.name || a).toString();
+      return nameA.includes('지희') ? -1 : 1;
+    });
   }, [allUsers])
+
 
 
   useEffect(() => {
