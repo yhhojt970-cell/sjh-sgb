@@ -17,6 +17,17 @@ export default function App() {
 
   const unsubRef = useRef({ profile: null, household: null })
 
+  // --- FORCE LOAD FALLBACK (3 Seconds) ---
+  useEffect(() => {
+    if (loading) {
+      const t = setTimeout(() => {
+        console.log("Force loading entry...")
+        setLoading(false)
+      }, 3000)
+      return () => clearTimeout(t)
+    }
+  }, [loading])
+
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
       setAuthUser(u || null)
@@ -33,7 +44,7 @@ export default function App() {
         const data = snap.data()
         setProfile(data)
         if (!data.householdId) setLoading(false)
-      } else { setProfile(null); setLoading(false); }
+      } else { setLoading(false); }
     }, () => setLoading(false))
   }, [authUser?.uid])
 
@@ -48,26 +59,25 @@ export default function App() {
   }, [profile?.householdId])
 
   const handleLogin = async () => {
-    if (!loginId || !loginPw) { setMessage('정보를 입력해 주세요.'); return }
+    if (!loginId || !loginPw) { setMessage('아이디와 비밀번호를 입력하세요.'); return }
     setBusy(true); setMessage('')
     try {
-      // Compatibility for legacy SJH-SGB accounts
       const email = `${loginId.trim().toLowerCase()}@kidschedule.local`
       await signInWithEmailAndPassword(auth, email, loginPw)
-    } catch (e) { setMessage('로그인 실패!') } finally { setBusy(false) }
+    } catch (e) { setMessage('로그인 정보를 확인해 주세요!') } finally { setBusy(false) }
   }
 
-  if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff4d6d', fontWeight: 'bold' }}>정보를 불러오는 중... 🌷</div>
+  if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff4d6d', fontWeight: 'bold', background: '#fff5f7' }}>잠시만 기다려 주세요... 🌷</div>
 
   if (!authUser || !profile) {
     return (
-      <div style={{ padding: '40px 20px', maxWidth: '400px', margin: '0 auto', textAlign: 'center' }}>
-        <h1 style={{ color: '#ff4d6d', fontSize: '24px', fontWeight: '900', marginBottom: '30px' }}>지희 가빈 스케줄</h1>
-        <div style={{ display: 'grid', gap: '10px' }}>
-            <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)} />
-            <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} type="password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)} />
-            <button onClick={handleLogin} disabled={busy} style={{ padding: '15px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold' }}>로그인</button>
-            {message && <div style={{ color: 'red', fontSize: '13px' }}>{message}</div>}
+      <div style={{ padding: '60px 20px', maxWidth: '400px', margin: '0 auto', textAlign: 'center' }}>
+        <h1 style={{ color: '#ff4d6d', fontSize: '28px', fontWeight: '900', marginBottom: '40px' }}>지희 가빈 스케줄</h1>
+        <div style={{ display: 'grid', gap: '12px' }}>
+            <input style={{ padding: '16px', borderRadius: '15px', border: '1px solid #ffdeeb', outline: 'none' }} placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)} />
+            <input style={{ padding: '16px', borderRadius: '15px', border: '1px solid #ffdeeb', outline: 'none' }} type="password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)} />
+            <button onClick={handleLogin} disabled={busy} style={{ padding: '16px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '15px', fontWeight: '900', fontSize: '18px', cursor: 'pointer' }}>로그인</button>
+            {message && <div style={{ color: '#ff4d6d', fontSize: '14px', marginTop: '10px', fontWeight: 'bold' }}>{message}</div>}
         </div>
       </div>
     )
