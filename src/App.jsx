@@ -31,6 +31,18 @@ export default function App() {
 
   const unsubRef = useRef({ profile: null, household: null })
 
+  // --- FORCE LOAD FALLBACK ---
+  // If stuck in loading for more than 3 seconds, force entry
+  useEffect(() => {
+    if (loading) {
+      const t = setTimeout(() => {
+        console.log("Force loading triggered")
+        setLoading(false)
+      }, 3000)
+      return () => clearTimeout(t)
+    }
+  }, [loading])
+
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
       setAuthUser(u || null)
@@ -44,7 +56,7 @@ export default function App() {
 
   useEffect(() => {
     if (unsubRef.current.profile) unsubRef.current.profile()
-    setProfile(null)
+    unsubRef.current.profile = null
     if (!authUser?.uid) return
 
     const ref = doc(db, 'users', authUser.uid)
@@ -54,7 +66,6 @@ export default function App() {
         setProfile(data)
         if (!data.householdId) setLoading(false)
       } else {
-        setProfile(null)
         setLoading(false)
       }
     }, () => setLoading(false))
@@ -77,46 +88,49 @@ export default function App() {
   }, [profile?.householdId])
 
   const handleLogin = async () => {
-    if (!loginFamilyId || !loginId || !loginPw) { setMessage('모든 정보를 입력해 주세요.'); return }
+    if (!loginFamilyId || !loginId || !loginPw) { setMessage('정보를 입력해 주세요.'); return }
     setBusy(true); setMessage('')
     try {
       await signInWithEmailAndPassword(auth, normalizeIdToEmail(loginId, loginFamilyId), loginPw)
-    } catch (e) { 
-      console.error(e); setMessage('로그인 실패! 코드나 비번을 확인해 주세요.') 
-    } finally { setBusy(false) }
+    } catch (e) { setMessage('실패! 코드나 비번 확인.') } finally { setBusy(false) }
   }
 
   const handleCreateFamily = async () => {
-    if (!loginId || !loginPw || !familyName) { setMessage('정보를 모두 입력해 주세요.'); return }
+    if (!loginId || !loginPw || !familyName) { setMessage('정보를 입력해 주세요.'); return }
     setBusy(true)
     try {
       const familyId = Math.random().toString(36).substr(2, 6).toUpperCase()
       const userRes = await createUserWithEmailAndPassword(auth, normalizeIdToEmail(loginId, familyId), loginPw)
       await setDoc(doc(db, 'households', familyId), { id: familyId, name: familyName, adminUid: userRes.user.uid, people: { [loginId]: { role: 'admin', loginId, displayName: '엄마' } }, createdAt: serverTimestamp() })
       await setDoc(doc(db, 'users', userRes.user.uid), { uid: userRes.user.uid, loginId, householdId: familyId, role: 'admin', name: loginId, displayName: '엄마', createdAt: serverTimestamp() })
-    } catch (e) { setMessage('방 만들기 실패!') } finally { setBusy(false) }
+    } catch (e) { setMessage('실패!') } finally { setBusy(false) }
   }
 
   if (loading) {
-    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 'bold', color: '#ff4d6d' }}>잠시만 기다려 주세요... 🌷</div>
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff5f7', color: '#ff4d6d', fontWeight: 'bold' }}>
+        잠시만 기다려 주세요... 🌷
+      </div>
+    )
   }
 
   if (!authUser || !profile) {
     return (
       <div style={{ padding: '40px 20px', maxWidth: '400px', margin: '0 auto', textAlign: 'center' }}>
-        <h1 style={{ color: '#ff4d6d', marginBottom: '30px' }}>우리 가족 스케줄</h1>
-        <div style={{ display: 'flex', gap: '5px', marginBottom: '20px' }}>
-            <button onClick={() => setMode('login')} style={{ flex: 1, padding: '10px', background: mode === 'login' ? '#ff4d6d' : '#eee', color: mode === 'login' ? 'white' : 'black', border: 'none', borderRadius: '10px' }}>로그인</button>
-            <button onClick={() => setMode('create')} style={{ flex: 1, padding: '10px', background: mode === 'create' ? '#ff4d6d' : '#eee', color: mode === 'create' ? 'white' : 'black', border: 'none', borderRadius: '10px' }}>방 만들기</button>
+        <h1 style={{ color: '#ff4d6d', fontSize: '22px', fontWeight: '900' }}>우리 가족 스케줄</h1>
+        <div style={{ display: 'flex', gap: '5px', margin: '20px 0' }}>
+            <button onClick={() => setMode('login')} style={{ flex: 1, padding: '12px', background: mode === 'login' ? '#ff4d6d' : '#eee', color: mode === 'login' ? 'white' : 'black', border: 'none', borderRadius: '12px' }}>로그인</button>
+            <button onClick={() => setMode('create')} style={{ flex: 1, padding: '12px', background: mode === 'create' ? '#ff4d6d' : '#eee', color: mode === 'create' ? 'white' : 'black', border: 'none', borderRadius: '12px' }}>방 만들기</button>
         </div>
         <div style={{ display: 'grid', gap: '10px' }}>
-            {mode === 'login' && <input style={{ padding: '15px', borderRadius: '10px', border: '1px solid #ddd' }} placeholder="가족 코드 (예: SJH-SGB)" value={loginFamilyId} onChange={e => setLoginFamilyId(e.target.value.toUpperCase())} />}
-            {mode === 'create' && <input style={{ padding: '15px', borderRadius: '10px', border: '1px solid #ddd' }} placeholder="가족 이름" value={familyName} onChange={e => setFamilyName(e.target.value)} />}
-            <input style={{ padding: '15px', borderRadius: '10px', border: '1px solid #ddd' }} placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)} />
-            <input style={{ padding: '15px', borderRadius: '10px', border: '1px solid #ddd' }} type="password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)} />
-            <button onClick={mode === 'login' ? handleLogin : handleCreateFamily} disabled={busy} style={{ padding: '15px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold' }}>{busy ? '처리 중...' : '확인'}</button>
-            {message && <div style={{ color: 'red', fontSize: '13px' }}>{message}</div>}
+            {mode === 'login' && <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} placeholder="가족 코드 (예: SJH-SGB)" value={loginFamilyId} onChange={e => setLoginFamilyId(e.target.value.toUpperCase())} />}
+            {mode === 'create' && <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} placeholder="가족 이름" value={familyName} onChange={e => setFamilyName(e.target.value)} />}
+            <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)} />
+            <input style={{ padding: '15px', borderRadius: '12px', border: '1px solid #ddd' }} type="password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)} />
+            <button onClick={mode === 'login' ? handleLogin : handleCreateFamily} disabled={busy} style={{ padding: '15px', background: '#ff4d6d', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold' }}>확인</button>
+            {message && <div style={{ color: 'red', fontSize: '12px' }}>{message}</div>}
         </div>
+        <div style={{ fontSize: '11px', marginTop: '15px', opacity: 0.6 }}>기존 가족 코드는 <strong>SJH-SGB</strong> 입니다.</div>
       </div>
     )
   }
@@ -124,7 +138,7 @@ export default function App() {
   return (
     <Dashboard
       user={{ id: profile.name || profile.loginId, role: profile.role }}
-      onLogout={() => { setLoading(true); signOut(auth); }}
+      onLogout={() => { signOut(auth); setLoading(false); }}
       allUsers={household?.people || {}}
       cloud={{ db, householdId: profile.householdId }}
     />
