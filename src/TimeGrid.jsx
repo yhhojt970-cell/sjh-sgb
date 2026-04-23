@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy, CalendarOff, UserMinus } from 'lucide-react'
+import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy } from 'lucide-react'
 
 const ICON_MAP = {
   Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star
@@ -22,19 +22,19 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       ref={setNodeRef}
       style={{
         display: 'flex',
-        minHeight: hourTasks.length > 0 ? '100px' : '45px',
+        minHeight: '100px',
         borderBottom: '1px solid rgba(0,0,0,0.05)',
         background: isOver
           ? 'rgba(139, 92, 246, 0.08)'
           : hourTasks.length
             ? 'transparent'
             : 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255, 244, 248, 0.9))',
-        transition: 'all 0.2s ease'
+        transition: 'background 0.2s ease'
       }}
     >
       <div style={{
         width: '70px',
-        padding: hourTasks.length > 0 ? '15px 10px' : '12px 10px',
+        padding: '15px 10px',
         fontSize: '13px',
         fontWeight: '700',
         color: 'var(--text-muted)',
@@ -43,7 +43,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       }}>
         {hour < 10 ? `0${hour}` : hour}:00
       </div>
-      <div className="time-slot-body" style={{ flex: 1, padding: hourTasks.length > 0 ? '10px' : '4px 10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+      <div style={{ flex: 1, padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map(task => (
           <TaskCard 
             key={task.id} 
@@ -81,15 +81,7 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
     const end = format(new Date(), 'HH:mm')
     onUpdate(task.id, { 
       actualEndTime: end,
-      completed: true,
-      status: 'done'
-    })
-  }
-
-  const setStatus = (status) => {
-    onUpdate(task.id, { 
-      status, 
-      completed: status === 'done' || status === 'absent' || status === 'off'
+      completed: true
     })
   }
 
@@ -127,72 +119,16 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
     }
   }
 
-  const renderStatusButtons = () => {
-    if (isFixed) {
-      return (
-        <div style={{ display: 'flex', gap: '5px' }}>
-          <button 
-            onClick={() => setStatus('done')} 
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', background: task.status === 'done' ? 'var(--accent)' : 'white', color: task.status === 'done' ? 'white' : 'var(--accent)', border: `1px solid var(--accent)`, padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' }}
-          >
-            <Check size={14} /> 완료
-          </button>
-          <button 
-            onClick={() => setStatus('off')} 
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', background: task.status === 'off' ? '#94a3b8' : 'white', color: task.status === 'off' ? 'white' : '#94a3b8', border: `1px solid #94a3b8`, padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' }}
-          >
-            <CalendarOff size={14} /> 휴강
-          </button>
-          <button 
-            onClick={() => setStatus('absent')} 
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', background: task.status === 'absent' ? '#ef4444' : 'white', color: task.status === 'absent' ? 'white' : '#ef4444', border: `1px solid #ef4444`, padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' }}
-          >
-            <UserMinus size={14} /> 결석
-          </button>
-        </div>
-      )
-    }
-
-    // Study Timer Logic
-    if (!task.actualStartTime) {
-      return (
-        <button onClick={handleStart} disabled={task.completed} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: 'var(--accent)', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-          <Play size={14} fill="white" /> 공부 시작
-        </button>
-      )
-    } else if (!task.actualEndTime) {
-      return (
-        <div style={{ display: 'flex', gap: '5px' }}>
-           <div style={{ flex: 1, background: 'rgba(52, 211, 153, 0.1)', color: 'var(--accent)', padding: '10px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', textAlign: 'center' }}>진행중... ({task.actualStartTime}~)</div>
-           <button onClick={handleEnd} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#ef4444', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-            <Square size={14} fill="white" /> 종료
-          </button>
-        </div>
-      )
-    } else {
-      return (
-        <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '10px', borderRadius: '8px' }}>
-           <div style={{ color: 'var(--accent)', fontWeight: '800', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <CheckCircle2 size={14} /> 공부 완료!
-           </div>
-           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              실제: {task.actualStartTime} ~ {task.actualEndTime} ({calculateActualDiff(task.actualStartTime, task.actualEndTime)}분 소요)
-           </div>
-        </div>
-      )
-    }
-  }
-
   return (
-    <div ref={setNodeRef} className="glass animate-fade-in task-card" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
+    <div ref={setNodeRef} className="glass animate-fade-in" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
       padding: '14px',
       borderRadius: 'var(--radius-md)',
-      background: isFixed ? 'rgba(139, 92, 246, 0.04)' : 'white',
+      background: isFixed ? 'rgba(139, 92, 246, 0.08)' : 'white',
       borderLeft: `6px solid ${task.color}`,
       minWidth: '280px',
       boxShadow: 'var(--shadow)',
       position: 'relative',
-      opacity: isDragging ? 0.35 : (task.completed && !isFixed) ? 0.7 : 1,
+      opacity: isDragging ? 0.35 : task.completed ? 0.7 : 1,
       border: isFixed ? '1px dashed var(--primary-light)' : '1px solid rgba(255,255,255,0.5)',
       transition: 'all 0.3s ease',
       cursor: isEditing ? 'default' : 'grab',
@@ -200,7 +136,7 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
     }}>
       {isFixed && (
         <div style={{ position: 'absolute', top: '-10px', right: '10px', background: 'var(--primary)', color: 'white', fontSize: '10px', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', zIndex: 10 }}>
-          {task.status === 'off' ? '휴강됨' : task.status === 'absent' ? '결석처리' : '고정 수업'}
+          고정 수업
         </div>
       )}
 
@@ -246,7 +182,7 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
               style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: hasNotes ? 'pointer' : 'default' }}
             >
               {task.icon && ICON_MAP[task.icon] ? React.createElement(ICON_MAP[task.icon], { size: 18, style: { color: task.color } }) : <Circle size={18} />}
-              <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--text-main)', borderBottom: hasNotes ? '2px dashed var(--primary-light)' : 'none', opacity: task.status === 'off' ? 0.5 : 1 }}>
+              <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--text-main)', borderBottom: hasNotes ? '2px dashed var(--primary-light)' : 'none' }}>
                 {task.name}
               </span>
               {hasNotes && <Info size={14} style={{ color: 'var(--primary)', opacity: 0.6 }} />}
@@ -305,7 +241,27 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {renderStatusButtons()}
+              {!task.actualStartTime ? (
+                <button onClick={handleStart} disabled={task.completed} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: 'var(--accent)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                  <Play size={14} fill="white" /> 공부 시작
+                </button>
+              ) : !task.actualEndTime ? (
+                <div style={{ display: 'flex', gap: '5px' }}>
+                   <div style={{ flex: 1, background: 'rgba(52, 211, 153, 0.1)', color: 'var(--accent)', padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', textAlign: 'center' }}>진행중... ({task.actualStartTime}~)</div>
+                   <button onClick={handleEnd} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#ef4444', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                    <Square size={14} fill="white" /> 종료
+                  </button>
+                </div>
+              ) : (
+                <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '8px', borderRadius: '8px' }}>
+                   <div style={{ color: 'var(--accent)', fontWeight: '800', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <CheckCircle2 size={14} /> 완료!
+                   </div>
+                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      실제: {task.actualStartTime} ~ {task.actualEndTime} ({calculateActualDiff(task.actualStartTime, task.actualEndTime)}분 소요)
+                   </div>
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -316,8 +272,8 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
 
 function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
   return (
-    <div className="glass time-grid-shell" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
-      <div className="time-grid-header" style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
+    <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
+      <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Clock size={20} style={{ color: 'var(--primary)' }} />
         </div>
@@ -327,7 +283,7 @@ function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
           </div>
         )}
       </div>
-      <div className="time-grid-scroll" style={{ maxHeight: '700px', overflowY: 'auto' }}>
+      <div style={{ maxHeight: '700px', overflowY: 'auto' }}>
         {HOURS.map(hour => (
           <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} />
         ))}
