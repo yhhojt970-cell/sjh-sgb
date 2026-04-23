@@ -13,7 +13,7 @@ const BORDER_COLOR = '#ffdeeb'
 
 const OFFICIAL = {
   SJH: 'sjh150717',
-  SGB: 'gb170101' // Fixed potential typo in ID if needed, but keeping user standard
+  SGB: 'sgb170101'
 }
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
@@ -42,7 +42,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     Object.entries(allUsers).forEach(([id, info]) => {
       const name = (info.displayName || info.name || id).toString();
       if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
-        const officialId = name.includes('지희') ? OFFICIAL.SJH : 'sgb170101';
+        const officialId = name.includes('지희') ? OFFICIAL.SJH : OFFICIAL.SGB;
         if (!seen.has(officialId)) {
           seen.add(officialId);
           list.push(officialId);
@@ -52,6 +52,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     
     return list.sort((a, b) => a.includes('sjh') ? -1 : 1);
   }, [allUsers])
+
 
   useEffect(() => {
     if (!activeKidId && kidsList.length > 0) setActiveKidId(kidsList[0])
