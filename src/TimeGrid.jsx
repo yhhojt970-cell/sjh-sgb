@@ -1,295 +1,118 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { format, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy } from 'lucide-react'
+import { Clock, CheckCircle2, Circle, Trash2, Play, Square, AlertCircle, Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star, Edit2, Check, X, ExternalLink, Info, Calendar, Copy, CalendarOff, UserMinus, Sparkles } from 'lucide-react'
 
-const ICON_MAP = {
-  Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star
-}
-
+const ICON_MAP = { Book, Music, Calculator, Languages, Palette, Activity, Coffee, User, Star }
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 7) // 7 to 24
 
-function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `hour-${hour}`,
-    data: { hour }
-  })
-
+function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, onAddSpecialEvent }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const hourTasks = tasks.filter(t => parseInt(t.startTime.split(':')[0]) === hour)
+  
+  const timerRef = useRef(null)
+  const handleMouseDown = () => {
+    if (!isAdmin) return
+    timerRef.current = setTimeout(() => onAddSpecialEvent(hour), 1000)
+  }
+  const handleMouseUp = () => clearTimeout(timerRef.current)
 
   return (
-    <div 
-      ref={setNodeRef}
-      style={{
-        display: 'flex',
-        minHeight: '100px',
-        borderBottom: '1px solid rgba(0,0,0,0.05)',
-        background: isOver
-          ? 'rgba(139, 92, 246, 0.08)'
-          : hourTasks.length
-            ? 'transparent'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255, 244, 248, 0.9))',
-        transition: 'background 0.2s ease'
-      }}
-    >
-      <div style={{
-        width: '70px',
-        padding: '15px 10px',
-        fontSize: '13px',
-        fontWeight: '700',
-        color: 'var(--text-muted)',
-        borderRight: '1px solid rgba(0,0,0,0.05)',
-        textAlign: 'right'
-      }}>
-        {hour < 10 ? `0${hour}` : hour}:00
-      </div>
-      <div style={{ flex: 1, padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
-        {hourTasks.map(task => (
-          <TaskCard 
-            key={task.id} 
-            task={task} 
-            onUpdate={onUpdateTask} 
-            onDelete={onDeleteTask}
-            isAdmin={isAdmin}
-          />
+    <div ref={setNodeRef} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onTouchStart={handleMouseDown} onTouchEnd={handleMouseUp} style={{ display: 'flex', minHeight: hourTasks.length > 0 ? '110px' : '45px', borderBottom: '1px solid rgba(0,0,0,0.05)', background: isOver ? 'rgba(255, 77, 109, 0.05)' : 'transparent', transition: 'all 0.2s ease' }}>
+      <div style={{ width: '50px', padding: '12px 0', fontSize: '12px', color: '#999', fontWeight: 'bold', borderRight: '1px solid rgba(0,0,0,0.03)', textAlign: 'center' }}>{hour.toString().padStart(2, '0')}:00</div>
+      <div style={{ flex: 1, padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {hourTasks.map(t => (
+          <TaskCard key={t.id} task={t} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} />
         ))}
       </div>
     </div>
   )
 }
 
-function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [showNotes, setShowNotes] = useState(false)
-  const [editData, setEditData] = useState({ ...task })
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `task-${task.id}`,
-    data: {
-      type: 'task',
-      task
+function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, data: { type: 'task', task } })
+  const Icon = ICON_MAP[task.icon] || Book
+
+  const handleStartTimer = () => { if(!task.startTimeActual) onUpdateTask(task.id, { startTimeActual: format(new Date(), 'HH:mm'), status: 'studying' }) }
+  const handleComplete = () => {
+    const now = new Date()
+    const up = { completed: true, status: 'completed', endTimeActual: format(now, 'HH:mm') }
+    if (task.startTimeActual) {
+       const [sh, sm] = task.startTimeActual.split(':').map(Number); const start = new Date(); start.setHours(sh, sm); const duration = Math.round((now - start) / 60000)
+       up.durationActual = duration
     }
-  })
-  
-  const isFixed = task.type === 'class'
-  const hasNotes = Boolean(task.notes)
-  
-  const handleStart = () => {
-    onUpdate(task.id, { actualStartTime: format(new Date(), 'HH:mm') })
+    onUpdateTask(task.id, up)
   }
 
-  const handleEnd = () => {
-    const end = format(new Date(), 'HH:mm')
-    onUpdate(task.id, { 
-      actualEndTime: end,
-      completed: true
-    })
-  }
+  const style = { transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, opacity: isDragging ? 0.5 : 1, background: task.completed ? '#f8fafc' : 'white', borderLeft: `6px solid ${task.color || PRIMARY_PINK}`, borderRadius: '15px', padding: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', position: 'relative', border: task.completed ? '1px solid #e2e8f0' : `1px solid ${task.color}20` }
 
-  const handleSave = () => {
-    const updates = !isAdmin && isFixed
-      ? {
-          notes: editData.notes || '',
-          startDate: editData.startDate || '',
-          endDate: editData.endDate || ''
-        }
-      : editData
-
-    onUpdate(task.id, updates)
-    setIsEditing(false)
-  }
-
-  const calculateActualDiff = (start, end) => {
-    if (!start || !end) return 0
-    const [sH, sM] = start.split(':').map(Number)
-    const [eH, eM] = end.split(':').map(Number)
-    return (eH * 60 + eM) - (sH * 60 + sM)
-  }
-
-  const canEditAll = isAdmin || !isFixed
-  const canEditNotesOnly = !isAdmin && isFixed
-  const canEnterEdit = canEditAll || canEditNotesOnly
-  const canDelete = canEditAll
-
-  const copyNotes = async () => {
-    if (!task.notes) return
-    try {
-      await navigator.clipboard.writeText(task.notes)
-    } catch (e) {
-      alert('메모 복사에 실패했어요.')
-    }
+  if (task.type === 'event') {
+    return (
+      <div style={{ ...style, borderLeft: '6px solid #fbbf24', background: '#fffbeb' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Star size={20} color="#fbbf24" fill="#fbbf24" /><div><div style={{ fontWeight: '900', fontSize: '15px' }}>{task.name}</div><div style={{ fontSize: '12px', color: '#999' }}>특별 일정</div></div></div>
+          {isAdmin && <button onPointerDown={(e) => { e.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none' }}><Trash2 size={18}/></button>}
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div ref={setNodeRef} className="glass animate-fade-in" {...(!isEditing ? listeners : {})} {...(!isEditing ? attributes : {})} style={{
-      padding: '14px',
-      borderRadius: 'var(--radius-md)',
-      background: isFixed ? 'rgba(139, 92, 246, 0.08)' : 'white',
-      borderLeft: `6px solid ${task.color}`,
-      minWidth: '280px',
-      boxShadow: 'var(--shadow)',
-      position: 'relative',
-      opacity: isDragging ? 0.35 : task.completed ? 0.7 : 1,
-      border: isFixed ? '1px dashed var(--primary-light)' : '1px solid rgba(255,255,255,0.5)',
-      transition: 'all 0.3s ease',
-      cursor: isEditing ? 'default' : 'grab',
-      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined
-    }}>
-      {isFixed && (
-        <div style={{ position: 'absolute', top: '-10px', right: '10px', background: 'var(--primary)', color: 'white', fontSize: '10px', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', zIndex: 10 }}>
-          고정 수업
-        </div>
-      )}
-
-      {isEditing ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <fieldset disabled={canEditNotesOnly} style={{ border: 'none', padding: 0, margin: 0, opacity: canEditNotesOnly ? 0.6 : 1 }}>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            <input className="input-field" style={{padding:'4px 8px', fontSize:'13px'}} value={editData.name} onChange={(e)=>setEditData({...editData, name: e.target.value})} placeholder="과목명" />
-            <input type="color" style={{width:'30px', height:'30px', padding:0, border:'none', background:'none'}} value={editData.color} onChange={(e)=>setEditData({...editData, color: e.target.value})} />
-          </div>
-          <div style={{ display: 'flex', gap: '5px', alignItems:'center' }}>
-            <input type="time" className="input-field" style={{padding:'4px', fontSize:'12px'}} value={editData.startTime} onChange={(e)=>setEditData({...editData, startTime: e.target.value})} />
-            <input type="number" className="input-field" style={{padding:'4px', fontSize:'12px', width:'50px'}} value={editData.duration} onChange={(e)=>setEditData({...editData, duration: parseInt(e.target.value)})} placeholder="분" />
-            <select className="input-field" style={{padding:'4px', fontSize:'12px'}} value={editData.icon} onChange={(e)=>setEditData({...editData, icon: e.target.value})}>
-               {Object.keys(ICON_MAP).map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </div>
-          </fieldset>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-             <label style={{fontSize:'10px', color:'var(--text-muted)'}}>수업 기간 (선택)</label>
-             <div style={{ display: 'flex', gap: '5px' }}>
-                <input type="date" className="input-field" style={{padding:'4px', fontSize:'11px'}} value={editData.startDate || ''} onChange={(e)=>setEditData({...editData, startDate: e.target.value})} />
-                <input type="date" className="input-field" style={{padding:'4px', fontSize:'11px'}} value={editData.endDate || ''} onChange={(e)=>setEditData({...editData, endDate: e.target.value})} />
-             </div>
-          </div>
-          <textarea 
-            className="input-field" 
-            style={{padding:'8px', fontSize:'12px', height:'60px'}} 
-            value={editData.notes || ''} 
-            onChange={(e)=>setEditData({...editData, notes: e.target.value})}
-            placeholder="수업 링크, 비밀번호 등 메모"
-          />
-          <div style={{ display: 'flex', gap: '5px', justifyContent:'flex-end' }}>
-             <button onClick={() => setIsEditing(false)} style={{ background:'#eee', border:'none', padding:'5px 10px', borderRadius:'6px', cursor:'pointer' }}><X size={14}/></button>
-             <button onClick={handleSave} style={{ background:'var(--primary)', color:'white', border:'none', padding:'5px 10px', borderRadius:'6px', cursor:'pointer' }}><Check size={14}/></button>
+    <div ref={setNodeRef} {...attributes} {...listeners} style={style}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ padding: '8px', background: `${task.color}15`, borderRadius: '10px', color: task.color }}><Icon size={18} /></div>
+          <div>
+            <div style={{ fontWeight: '900', color: '#333', fontSize: '15px' }}>{task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{display:'inline'}}/>}</div>
+            <div style={{ fontSize: '12px', color: '#666' }}>{task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</div>
           </div>
         </div>
-      ) : (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <div 
-              onClick={() => hasNotes && setShowNotes(!showNotes)}
-              style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: hasNotes ? 'pointer' : 'default' }}
-            >
-              {task.icon && ICON_MAP[task.icon] ? React.createElement(ICON_MAP[task.icon], { size: 18, style: { color: task.color } }) : <Circle size={18} />}
-              <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--text-main)', borderBottom: hasNotes ? '2px dashed var(--primary-light)' : 'none' }}>
-                {task.name}
-              </span>
-              {hasNotes && <Info size={14} style={{ color: 'var(--primary)', opacity: 0.6 }} />}
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {canEnterEdit && (
-                <button onClick={() => setIsEditing(true)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--primary)', opacity: 0.6 }}>
-                  <Edit2 size={16} />
-                </button>
-              )}
-              {canDelete && (
-                <button onClick={() => onDelete(task.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.6 }}>
-                  <Trash2 size={16} />
-                </button>
-              )}
-            </div>
-          </div>
+        {isAdmin && <button onPointerDown={(e) => { e.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none' }}><Trash2 size={16}/></button>}
+      </div>
 
-          {hasNotes && showNotes && (
-            <div className="animate-fade-in" style={{ 
-              background: 'rgba(139, 92, 246, 0.05)', 
-              padding: '10px', 
-              borderRadius: '8px', 
-              fontSize: '12px', 
-              marginBottom: '10px',
-              border: '1px solid rgba(139, 92, 246, 0.1)',
-              wordBreak: 'break-all',
-              whiteSpace: 'pre-wrap'
-            }}>
-               <div style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '5px' }}>
-                 <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                   <ExternalLink size={12} /> 수업 메모
-                 </span>
-                 {hasNotes && (
-                   <button onClick={copyNotes} style={{ border: 'none', background: 'rgba(0,0,0,0.06)', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                     <Copy size={12} /> 복사
-                   </button>
-                 )}
-               </div>
-               {task.notes}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ background: 'rgba(0,0,0,0.03)', padding: '8px', borderRadius: '8px' }}>
-               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                 <Clock size={14} />
-                 <span style={{ fontWeight: '600' }}>{task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
-               </div>
-               {(task.startDate || task.endDate) && (
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px', color: 'var(--text-muted)', opacity: 0.8 }}>
-                   <Calendar size={12} />
-                   <span>{task.startDate || '시작미정'} ~ {task.endDate || '종료미정'}</span>
-                 </div>
-               )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {!task.actualStartTime ? (
-                <button onClick={handleStart} disabled={task.completed} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: 'var(--accent)', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                  <Play size={14} fill="white" /> 공부 시작
-                </button>
-              ) : !task.actualEndTime ? (
-                <div style={{ display: 'flex', gap: '5px' }}>
-                   <div style={{ flex: 1, background: 'rgba(52, 211, 153, 0.1)', color: 'var(--accent)', padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', textAlign: 'center' }}>진행중... ({task.actualStartTime}~)</div>
-                   <button onClick={handleEnd} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', background: '#ef4444', color: 'white', border: 'none', padding: '8px', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
-                    <Square size={14} fill="white" /> 종료
-                  </button>
-                </div>
-              ) : (
-                <div style={{ background: 'rgba(52, 211, 153, 0.1)', padding: '8px', borderRadius: '8px' }}>
-                   <div style={{ color: 'var(--accent)', fontWeight: '800', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <CheckCircle2 size={14} /> 완료!
-                   </div>
-                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      실제: {task.actualStartTime} ~ {task.actualEndTime} ({calculateActualDiff(task.actualStartTime, task.actualEndTime)}분 소요)
-                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
-  return (
-    <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
-      <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Clock size={20} style={{ color: 'var(--primary)' }} />
-        </div>
-        {tasks.length === 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'var(--text-muted)' }}>
-             <AlertCircle size={14} /> 왼쪽에서 공부할 과목을 끌어다 놓으세요!
-          </div>
+      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+        {task.type === 'class' ? (
+          <>
+            <button onPointerDown={(e) => { e.stopPropagation(); onUpdateTask(task.id, { completed: !task.completed, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'completed' ? '#42c99b' : '#f1f5f9', color: task.status === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold' }}>완료</button>
+            <button onPointerDown={(e) => { e.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'holiday' ? '#3b82f6' : '#f1f5f9', color: task.status === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold' }}>휴강</button>
+            <button onPointerDown={(e) => { e.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'absent' ? '#ef4444' : '#f1f5f9', color: task.status === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold' }}>결석</button>
+          </>
+        ) : (
+          <>
+            {!task.completed && !task.startTimeActual && <button onPointerDown={(e) => { e.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px' }}><Play size={14}/> 공부 시작</button>}
+            {task.startTimeActual && !task.completed && <button onPointerDown={(e) => { e.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#42c99b', color: 'white', border: 'none', fontWeight: 'bold' }}>완료</button>}
+            {task.completed && <div style={{ fontSize: '12px', color: '#42c99b', fontWeight: 'bold' }}>✨ {task.startTimeActual} ~ {task.endTimeActual} ({task.durationActual}분 공부 완료!)</div>}
+          </>
         )}
       </div>
-      <div style={{ maxHeight: '700px', overflowY: 'auto' }}>
+    </div>
+  )
+}
+
+const PRIMARY_PINK = '#ff4d6d'
+
+export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, onAddSpecialEvent, essentialChecklist = [] }) {
+  return (
+    <div style={{ background: 'white', borderRadius: '24px', overflow: 'hidden', border: '1px solid #ffdeeb' }}>
+      <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900', color: '#333', whiteSpace: 'nowrap' }}><Clock color={PRIMARY_PINK} /> 오늘 스케줄</div>
+        
+        {/* 'MUST' (꼭!) Checklist - Horizontal Scroll */}
+        <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+           {essentialChecklist.map(item => (
+             <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: '#fff', border: '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: PRIMARY_PINK, boxShadow: '0 2px 6px rgba(255, 77, 109, 0.05)' }}>
+               꼭! {item.name}
+             </div>
+           ))}
+        </div>
+        
+        <div style={{ fontSize: '10px', color: '#999', whiteSpace: 'nowrap' }}>💡 꾹 누르면 특별일정</div>
+      </div>
+      <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         {HOURS.map(hour => (
-          <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} />
+          <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} onAddSpecialEvent={onAddSpecialEvent} />
         ))}
       </div>
     </div>
   )
 }
-
-export default TimeGrid
