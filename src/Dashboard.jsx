@@ -30,7 +30,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showSettings, setShowSettings] = useState(false); const [showGoals, setShowGoals] = useState(false); const [showAppLauncher, setShowAppLauncher] = useState(false); const [showSurprise, setShowSurprise] = useState(false); const [showFamilyManager, setShowFamilyManager] = useState(false); const [showPalette, setShowPalette] = useState(false)
   
   const [newReward, setNewReward] = useState({ text: '', coins: 50 }); const [newEssential, setNewEssential] = useState(''); const [newMessage, setNewMessage] = useState(''); const [messageTarget, setMessageTarget] = useState(''); const [replyText, setReplyText] = useState('')
-  const [activeDragItem, setActiveDragItem] = useState(null); const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const [activeDragItem, setActiveDragItem] = useState(null); // Keeping for potential future drag overlay usage
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   // ABSOLUTELY STABLE SORTED LIST
   const kidsList = useMemo(() => {
@@ -41,7 +42,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     Object.entries(allUsers).forEach(([id, info]) => {
       const name = (info.displayName || info.name || id).toString();
       if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
-        const officialId = name.includes('지희') ? OFFICIAL.SJH : 'sgb170101'; // Ensuring official IDs
+        const officialId = name.includes('지희') ? OFFICIAL.SJH : 'sgb170101';
         if (!seen.has(officialId)) {
           seen.add(officialId);
           list.push(officialId);
@@ -82,7 +83,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i))
   const todayStr = format(selectedDate, 'yyyy-MM-dd')
   const todayTasks = tasks.filter(t => (t.type === 'class' && t.weekday === getDay(selectedDate)) || (t.date === todayStr))
-  const availableCoins = useMemo(() => tasks.filter(t => t.completed).reduce((s, t) => s + (t.coins || 0), 0) - spentCoins, [tasks, spentCoins])
+  const availableCoins = useMemo(() => {
+    return tasks
+      .filter(t => t.completed && t.type !== 'class')
+      .reduce((s, t) => s + (t.coins || (t.type === 'study' ? 1 : 0)), 0) - spentCoins
+  }, [tasks, spentCoins])
   
   const todayMessagesForActiveKid = messages.filter(m => m.date === todayStr && m.kidId === activeKidId)
   const unreadMessage = todayMessagesForActiveKid.find(m => !m.read)
@@ -101,11 +106,19 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     return allUsers[id]?.displayName || allUsers[id]?.name || id;
   }
 
+  // GLASS EFFECT STYLE
+  const glassStyle = {
+    background: 'rgba(255, 255, 255, 0.65)',
+    backdropFilter: 'blur(15px)',
+    WebkitBackdropFilter: 'blur(15px)',
+    border: `1px solid rgba(255, 255, 255, 0.3)`
+  }
+
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => { const d = e.active.data.current; if (d?.type === 'palette') { setActiveDragItem({ type: 'palette', subject: d.subject }); if(isMobile) setShowPalette(false); } else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={e => { const { active, over } = e; if (!over) { setActiveDragItem(null); return }; const d = active.data.current; if (d?.type === 'palette' && over.id.toString().startsWith('hour-')) { const startTime = `${over.data.current.hour.toString().padStart(2, '0')}:00`; const nt = { id: Math.random().toString(36).substr(2, 9), name: d.subject.name, color: d.subject.color, startTime, expectedEndTime: '00:00', duration: 50, type: 'study', icon: 'Book', completed: false, date: todayStr, coins: 1 }; const next = [...tasks, nt]; setTasks(next); persist({ tasks: next }) } setActiveDragItem(null); }}>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => { const d = e.active.data.current; if (d?.type === 'palette') { setActiveDragItem({ type: 'palette', subject: d.subject }); if(isMobile) setShowPalette(false); } else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={e => { const { active, over } = e; if (!over) { setActiveDragItem(null); return }; const d = active.data.current; if (d?.type === 'palette' && over.id.toString().startsWith('hour-')) { const startTime = `${over.data.current.hour.toString().padStart(2, '0')}:00`; const nt = { id: Math.random().toString(36).substr(2, 9), name: d.subject.name, color: d.subject.color, startTime, expectedEndTime: '00:00', duration: 50, type: 'study', icon: 'Book', completed: false, date: todayStr, coins: d.subject.coins || 1 }; const next = [...tasks, nt]; setTasks(next); persist({ tasks: next }) } setActiveDragItem(null); }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        <header style={{ padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', background: 'white', border: `1px solid ${BORDER_COLOR}`, boxShadow: '0 4px 12px rgba(255, 77, 109, 0.05)' }}>
+        <header style={{ ...glassStyle, padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(255, 77, 109, 0.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '15px' }}>
               <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
@@ -134,7 +147,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         </header>
 
-        <div style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', border: `1px solid ${BORDER_COLOR}` }}>
+        <div style={{ ...glassStyle, borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
             <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
             <div style={{ fontWeight: '900', fontSize: isMobile ? '18px' : '22px', display:'flex', alignItems:'center', gap:'8px', color: '#333' }}><Calendar size={20} color={PRIMARY_PINK}/> {format(selectedDate, 'yyyy년 MM월')}</div>
@@ -158,18 +171,22 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
              </div>
            )}
-           <TimeGrid tasks={todayTasks} onUpdateTask={(id, up) => { const next = tasks.map(t => t.id === id ? {...t, ...up} : t); setTasks(next); persist({ tasks: next }) }} onDeleteTask={id => { const next = tasks.filter(t => t.id !== id); setTasks(next); persist({ tasks: next }) }} isAdmin={isAdmin} essentialChecklist={essentials} onAddSpecialEvent={(h) => { const name = prompt('특별 일정 이름'); if(name) { const nt = { id: Date.now(), name, startTime: `${h.toString().padStart(2, '0')}:00`, expectedEndTime: `${h.toString().padStart(2, '0')}:30`, duration: 30, type: 'event', icon: 'Star', completed: false, date: todayStr }; setTasks([...tasks, nt]); persist({ tasks: [...tasks, nt] }) } }} />
+           <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden' }}>
+             <TimeGrid tasks={todayTasks} onUpdateTask={(id, up) => { const next = tasks.map(t => t.id === id ? {...t, ...up} : t); setTasks(next); persist({ tasks: next }) }} onDeleteTask={id => { const next = tasks.filter(t => t.id !== id); setTasks(next); persist({ tasks: next }) }} isAdmin={isAdmin} essentialChecklist={essentials} onAddSpecialEvent={(h) => { const name = prompt('특별 일정 이름'); if(name) { const nt = { id: Date.now(), name, startTime: `${h.toString().padStart(2, '0')}:00`, expectedEndTime: `${h.toString().padStart(2, '0')}:30`, duration: 30, type: 'event', icon: 'Star', completed: false, date: todayStr }; setTasks([...tasks, nt]); persist({ tasks: [...tasks, nt] }) } }} />
+           </div>
         </main>
+
 
         {/* MODALS */}
         {showPalette && (
            <div className="modal-overlay" onClick={() => setShowPalette(false)}>
              <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}><h2 style={{ fontWeight: '900', color: PRIMARY_PINK }}>과목 선택하기 🎨</h2><button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={28}/></button></div>
-                <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} />
+                <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} />
              </div>
            </div>
         )}
+
 
         {showGoals && (
            <div className="modal-overlay" onClick={() => setShowGoals(false)}>
