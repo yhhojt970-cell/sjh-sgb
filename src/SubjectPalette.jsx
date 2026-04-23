@@ -202,18 +202,37 @@ export function SubjectPalette({ cloud, activeKidId }) {
   return (
     <div style={{ padding: '18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '900' }}>과목 팔레트</h3>
+        <div>
+          <h3 style={{ fontSize: '15px', fontWeight: '900' }}>과목 팔레트</h3>
+          <div style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '700' }}>대상: {activeKidId || '선택안됨'}</div>
+        </div>
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>드래그해서 시간표에 놓기</span>
       </div>
 
       <div style={{ display: 'grid', gap: '10px', marginBottom: '14px' }}>
         {list.map((s, idx) => (
-          <PaletteItem 
-            key={`${s.name}-${s.kidId || 'shared'}-${idx}`} 
-            subject={s} 
-            onSave={updateSubject} 
-            onDelete={deleteSubject} 
-          />
+          <div key={`${s.name}-${s.kidId || 'shared'}-${idx}`} style={{ position: 'relative' }}>
+            <PaletteItem 
+              subject={s} 
+              onSave={updateSubject} 
+              onDelete={deleteSubject} 
+            />
+            {s.kidId && (
+              <span style={{ 
+                position: 'absolute', 
+                top: '-5px', 
+                right: '5px', 
+                fontSize: '9px', 
+                background: 'rgba(0,0,0,0.4)', 
+                color: 'white', 
+                padding: '1px 4px', 
+                borderRadius: '4px',
+                pointerEvents: 'none'
+              }}>
+                {s.kidId}
+              </span>
+            )}
+          </div>
         ))}
       </div>
 
