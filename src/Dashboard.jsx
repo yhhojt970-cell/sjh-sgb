@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
-import { LogOut, Settings, Star, ChevronLeft, ChevronRight, Gift, Trophy, Plus, LayoutGrid, Mail, Send, X as CloseIcon, Trash, Sparkles, Calendar, Coins, Check, Users } from 'lucide-react'
+import { LogOut, Settings, Star, ChevronLeft, ChevronRight, Gift, Trophy, Plus, LayoutGrid, Send, X as CloseIcon, Trash, Calendar, Coins, Check, Users } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, getDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { doc, onSnapshot, serverTimestamp, setDoc, updateDoc, arrayUnion } from 'firebase/firestore'
@@ -10,6 +10,12 @@ import { doc, onSnapshot, serverTimestamp, setDoc, updateDoc, arrayUnion } from 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const BORDER_COLOR = '#ffdeeb'
+
+// OFFICIAL IDS FOR STORAGE
+const OFFICIAL = {
+  SJH: 'sjh150717',
+  SGB: 'sgb170101'
+}
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const isCloud = !!cloud.db && !!cloud.householdId
@@ -27,26 +33,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [newReward, setNewReward] = useState({ text: '', coins: 50 }); const [newEssential, setNewEssential] = useState(''); const [newMessage, setNewMessage] = useState(''); const [messageTarget, setMessageTarget] = useState(''); const [replyText, setReplyText] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null); const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
+  // ROBUST KID LIST & FORCED FULL NAMES
   const kidsList = useMemo(() => {
     const list = [];
     const seen = new Set();
     const targets = ['지희', '가빈'];
 
+    // Map whatever comes from allUsers to our OFFICIAL IDs
     Object.entries(allUsers).forEach(([id, info]) => {
       const name = (info.displayName || info.name || id).toString();
       if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
-        const normalized = name.includes('지희') ? '손지희' : '손가빈';
-        if (!seen.has(normalized)) {
-          seen.add(normalized);
-          list.push(id);
+        const officialId = name.includes('지희') ? OFFICIAL.SJH : OFFICIAL.SGB;
+        if (!seen.has(officialId)) {
+          seen.add(officialId);
+          list.push(officialId);
         }
       }
     });
     
-    return list.sort((a, b) => {
-      const nameA = (allUsers[a]?.displayName || '').includes('지희') ? -1 : 1;
-      return nameA;
-    });
+    return list.sort((a, b) => a === OFFICIAL.SJH ? -1 : 1);
   }, [allUsers])
 
   useEffect(() => {
@@ -92,6 +97,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setReplyText(''); setShowSurprise(false)
   }
 
+  // Helper for full names
+  const getFullName = (id) => {
+    if (id === OFFICIAL.SJH) return '손지희';
+    if (id === OFFICIAL.SGB) return '손가빈';
+    return allUsers[id]?.displayName || allUsers[id]?.name || id;
+  }
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={e => { const d = e.active.data.current; if (d?.type === 'palette') { setActiveDragItem({ type: 'palette', subject: d.subject }); if(isMobile) setShowPalette(false); } else if (d?.type === 'task') setActiveDragItem({ type: 'task', task: d.task }); }} onDragEnd={e => { const { active, over } = e; if (!over) { setActiveDragItem(null); return }; const d = active.data.current; if (d?.type === 'palette' && over.id.toString().startsWith('hour-')) { const startTime = `${over.data.current.hour.toString().padStart(2, '0')}:00`; const nt = { id: Math.random().toString(36).substr(2, 9), name: d.subject.name, color: d.subject.color, startTime, expectedEndTime: '00:00', duration: 50, type: 'study', icon: 'Book', completed: false, date: todayStr, coins: 1 }; const next = [...tasks, nt]; setTasks(next); persist({ tasks: next }) } setActiveDragItem(null); }}>
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fff9e6 0%, #fff0f3 100%)', padding: isMobile ? '8px' : '20px', transition: 'background 0.5s ease' }}>
@@ -106,7 +118,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   </div>
                 </div>
                 <div>
-                  <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: '900', color: '#333', margin: 0 }}>{allUsers[activeKidId]?.displayName || activeKidId} <span style={{fontSize:'12px', color:PRIMARY_PINK, marginLeft:'5px'}}><Coins size={14} style={{verticalAlign:'middle'}}/> {availableCoins}</span></h1>
+                  <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: '900', color: '#333', margin: 0 }}>{getFullName(activeKidId)} <span style={{fontSize:'12px', color:PRIMARY_PINK, marginLeft:'5px'}}><Coins size={14} style={{verticalAlign:'middle'}}/> {availableCoins}</span></h1>
                 </div>
               </div>
 
@@ -121,16 +133,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
               {kidsList.map(id => (
-                <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>{allUsers[id]?.displayName || id}</button>
+                <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>{getFullName(id)}</button>
               ))}
             </div>
           </header>
 
           <div style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px', border: `1px solid ${BORDER_COLOR}` }}>
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
-              <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: '#ff4d6d' }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
+              <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronLeft size={isMobile ? 24 : 28}/></button>
               <div style={{ fontWeight: '900', fontSize: isMobile ? '18px' : '22px', display:'flex', alignItems:'center', gap:'8px', color: '#333' }}><Calendar size={20} color={PRIMARY_PINK}/> {format(selectedDate, 'yyyy년 MM월')}</div>
-              <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: '#ff4d6d' }}><ChevronRight size={isMobile ? 24 : 28}/></button>
+              <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronRight size={isMobile ? 24 : 28}/></button>
             </div>
             <div style={{ display: 'flex', gap: '4px' }}>
               {weekDays.map(day => (
@@ -250,7 +262,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
              <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{background:'white', borderRadius:'24px', padding:'25px', maxWidth:isMobile ? '95%' : '450px', width:'100%'}}>
                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px'}}><h2 style={{fontWeight:'900', color:PRIMARY_PINK}}>가족 & 메시지 🏰</h2><button onClick={() => setShowFamilyManager(false)} style={{border:'none', background:'none'}}><CloseIcon/></button></div>
                <div style={{ marginBottom: '20px', padding: '15px', background: '#f8fafc', borderRadius: '15px' }}>
-                 <select className="input-field" value={messageTarget} onChange={e => setMessageTarget(e.target.value)} style={{marginBottom:'8px'}}><option value="">대상 선택</option>{kidsList.map(id => <option key={id} value={id}>{allUsers[id]?.displayName || id}</option>)}</select>
+                 <select className="input-field" value={messageTarget} onChange={e => setMessageTarget(e.target.value)} style={{marginBottom:'8px'}}><option value="">대상 선택</option>{kidsList.map(id => <option key={id} value={id}>{getFullName(id)}</option>)}</select>
                  <textarea className="input-field" placeholder="메시지 전송" value={newMessage} onChange={e => setNewMessage(e.target.value)} style={{ height: '70px', marginBottom:'8px' }} />
                  <button onClick={() => { if(newMessage && messageTarget){ updateDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', 'messages'), { messages: arrayUnion({ id: Date.now(), text: newMessage, date: todayStr, kidId: messageTarget, read: false }) }); setNewMessage(''); } }} className="btn-primary" style={{width:'100%'}}>전송</button>
                </div>
@@ -258,7 +270,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
                  {messages.slice().reverse().map(m => (
                    <div key={m.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '12px', fontSize: '12px' }}>
-                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><strong>{allUsers[m.kidId]?.displayName}</strong> <span>{m.read ? '읽음' : '안읽음'}</span></div>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><strong>{getFullName(m.kidId)}</strong> <span>{m.read ? '읽음' : '안읽음'}</span></div>
                      <div>{m.text}</div>
                      {m.reply && <div style={{ marginTop: '5px', color: PRIMARY_PINK, fontWeight: 'bold' }}>↳ 답장: {m.reply}</div>}
                    </div>
@@ -268,7 +280,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
            </div>
         )}
       </div>
-      <DragOverlay>{activeDragItem && <div style={{ padding: '12px', background: 'white', borderRadius: '12px', borderLeft: `6px solid ${PRIMARY_PINK}`, boxShadow: '0 8px 16px rgba(0,0,0,0.1)', fontWeight: '900' }}>{activeDragItem.type === 'palette' ? activeDragItem.subject.name : activeDragItem.task.name}</div>}</DragOverlay>
     </DndContext>
   )
 }

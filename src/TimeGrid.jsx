@@ -1,55 +1,63 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { format } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { Clock, Trash2, Play, Star, Sparkles, Heart } from 'lucide-react'
 
-const ICON_MAP = { Star } // Added only what's needed to avoid linter errors
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
+const HOURS = Array.from({ length: 18 }, (_, i) => i + 7)
 
 function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, onAddSpecialEvent }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const hourTasks = tasks.filter(t => parseInt(t.startTime.split(':')[0]) === hour)
-  const [isHovered, setIsHovered] = useState(false)
-  const timerRef = useRef(null)
+  const [activeSlot, setActiveSlot] = useState(false)
   const isMobile = window.innerWidth <= 768
-
-  const handleMouseDown = () => {
-    if (!isAdmin) return
-    timerRef.current = setTimeout(() => onAddSpecialEvent(hour), 1000)
-  }
-  const handleMouseUp = () => clearTimeout(timerRef.current)
 
   return (
     <div 
       ref={setNodeRef} 
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onMouseDown={handleMouseDown} 
-      onMouseUp={handleMouseUp} 
-      onTouchStart={handleMouseDown} 
-      onTouchEnd={handleMouseUp} 
+      onClick={() => isAdmin && setActiveSlot(!activeSlot)}
+      onMouseEnter={() => !isMobile && setActiveSlot(true)}
+      onMouseLeave={() => !isMobile && setActiveSlot(false)}
       style={{ 
         display: 'flex', 
         minHeight: hourTasks.length > 0 ? '110px' : '55px', 
         borderBottom: '1px solid rgba(0,0,0,0.05)', 
         background: isOver ? 'rgba(255, 77, 109, 0.05)' : 'transparent', 
         transition: 'all 0.2s ease',
-        position: 'relative'
+        position: 'relative',
+        cursor: isAdmin ? 'pointer' : 'default'
       }}
     >
       <div style={{ width: '60px', padding: '15px 0', fontSize: '13px', color: '#999', fontWeight: 'bold', borderRight: '1px solid rgba(0,0,0,0.03)', textAlign: 'center' }}>{hour.toString().padStart(2, '0')}:00</div>
       
-      {isAdmin && isHovered && !isMobile && (
+      {isAdmin && activeSlot && (
         <button 
-          onClick={(e) => { e.stopPropagation(); onAddSpecialEvent(hour); }}
-          style={{ position: 'absolute', left: '65px', top: '10px', zIndex: 10, background: '#fbbf24', color: 'white', border: 'none', borderRadius: '10px', padding: '4px 10px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(251, 191, 36, 0.3)' }}
+          onClick={(e) => { e.stopPropagation(); onAddSpecialEvent(hour); setActiveSlot(false); }}
+          style={{ 
+            position: 'absolute', 
+            left: isMobile ? '70px' : '65px', 
+            top: '10px', 
+            zIndex: 10, 
+            background: '#fbbf24', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '10px', 
+            padding: '6px 12px', 
+            fontSize: isMobile ? '12px' : '11px', 
+            fontWeight: 'bold', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '4px', 
+            cursor: 'pointer', 
+            boxShadow: '0 4px 10px rgba(251, 191, 36, 0.4)',
+            animation: 'fade-in 0.2s ease'
+          }}
         >
-          <Star size={12} fill="white"/> 특별일정
+          <Star size={14} fill="white"/> 특별일정 추가
         </button>
       )}
 
-      {/* PC: Row Layout (Multi-column) / Mobile: Column Layout */}
       <div style={{ 
         flex: 1, 
         padding: '10px', 
