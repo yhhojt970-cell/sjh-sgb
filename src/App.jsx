@@ -8,58 +8,22 @@ import {
   signOut,
   updatePassword
 } from 'firebase/auth'
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, onSnapshot, serverTimestamp, setDoc, getDoc } from 'firebase/firestore'
 import Dashboard from './Dashboard.jsx'
 import { auth, db } from './firebase'
+import { Star, User, Heart, ShieldCheck, Plus, LogIn, Users, Sparkles, X } from 'lucide-react'
 
-const HOUSEHOLD_ID = 'SJH-SGB'
-
-const ACCOUNTS = {
-  yhhojt970: {
-    name: '엄마',
-    displayName: '엄마',
-    mascot: '🌷',
-    role: 'admin',
-    badge: '관리자',
-    accent: '#ff8fb1',
-    background: 'linear-gradient(135deg, #ffe4ec, #fff7d6)'
-  },
-  sjh150717: {
-    name: '지희',
-    displayName: '손지희',
-    mascot: '🫧',
-    role: 'child',
-    badge: '지희',
-    accent: '#7c9cff',
-    background: 'linear-gradient(135deg, #e8f0ff, #fff0fb)'
-  },
-  sgb170101: {
-    name: '가빈',
-    displayName: '손가빈',
-    mascot: '🐱',
-    role: 'child',
-    badge: '가빈',
-    accent: '#42c99b',
-    background: 'linear-gradient(135deg, #e8fff5, #fff8df)'
-  }
-}
-
-const ACCOUNT_NAME_ALIASES = Object.fromEntries(
-  Object.entries(ACCOUNTS).flatMap(([loginId, info]) => [
-    [info.name, loginId],
-    [info.displayName, loginId]
-  ])
-)
-
-const normalizeIdToEmail = (id) => `${(id || '').trim()}@kidschedule.local`
+const normalizeIdToEmail = (id, familyId) => `${id.trim().toLowerCase()}@${familyId ? familyId.toLowerCase() : 'kidschedule'}.local`
 
 export default function App() {
   const [authUser, setAuthUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [household, setHousehold] = useState(null)
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState('login') 
+  const [loginFamilyId, setLoginFamilyId] = useState('')
   const [loginId, setLoginId] = useState('')
   const [loginPw, setLoginPw] = useState('')
+  const [familyName, setFamilyName] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -70,7 +34,6 @@ export default function App() {
       setAuthUser(nextUser || null)
       setMessage('')
     })
-
     return () => unsub()
   }, [])
 
@@ -91,7 +54,6 @@ export default function App() {
     return () => {
       if (unsubRef.current.profile) unsubRef.current.profile()
       if (unsubRef.current.household) unsubRef.current.household()
-      unsubRef.current = { profile: null, household: null }
     }
   }, [authUser?.uid])
 
@@ -109,243 +71,170 @@ export default function App() {
 
     return () => {
       if (unsubRef.current.household) unsubRef.current.household()
-      unsubRef.current.household = null
     }
   }, [profile?.householdId])
 
-  const allUsers = useMemo(() => {
-    const people = household?.people || {}
+  const handleCreateFamily = async () => {
+    if (!loginId || !loginPw || !familyName) {
+      setMessage('모든 항목을 입력해 주세요.')
+      return
+    }
+    setBusy(true)
+    try {
+      const familyId = Math.random().toString(36).substr(2, 6).toUpperCase()
+      const email = normalizeIdToEmail(loginId, familyId)
+      
+      const userRes = await createUserWithEmailAndPassword(auth, email, loginPw)
+      const uid = userRes.user.uid
 
-    return Object.fromEntries(
-      Object.entries(ACCOUNTS).map(([loginId, info]) => {
-        const matchedEntry = Object.entries(people).find(([personName, person]) => {
-          const matchedLoginId = person?.loginId || ACCOUNT_NAME_ALIASES[personName]
-          return matchedLoginId === loginId
-        })
-
-        return [
-          info.name,
-          {
-            role: matchedEntry?.[1]?.role || info.role,
-            loginId,
-            name: info.name,
-            displayName: info.displayName
-          }
-        ]
+      await setDoc(doc(db, 'households', familyId), {
+        id: familyId,
+        name: familyName,
+        adminUid: uid,
+        people: {
+          [loginId]: { role: 'admin', loginId, displayName: '엄마' }
+        },
+        createdAt: serverTimestamp()
       })
-    )
-  }, [household?.people])
 
-  const user = useMemo(() => {
-    if (!profile?.name) return null
-    return { id: profile.name, role: profile.role }
-  }, [profile?.name, profile?.role])
-
-  const selectedAccount = ACCOUNTS[(loginId || '').trim()]
-
-  const ensureProfile = async (rawId) => {
-    const account = ACCOUNTS[rawId]
-    if (!account || !auth.currentUser?.uid) return
-
-    const people = Object.fromEntries(
-      Object.entries(ACCOUNTS).map(([id, info]) => [info.name, { role: info.role, loginId: id }])
-    )
-
-    await setDoc(
-      doc(db, 'users', auth.currentUser.uid),
-      {
-        loginId: rawId,
-        name: account.name,
-        role: account.role,
-        householdId: HOUSEHOLD_ID,
-        updatedAt: serverTimestamp(),
+      await setDoc(doc(db, 'users', uid), {
+        uid,
+        loginId,
+        householdId: familyId,
+        role: 'admin',
+        name: loginId,
+        displayName: '엄마',
         createdAt: serverTimestamp()
-      },
-      { merge: true }
-    )
+      })
 
-    await setDoc(
-      doc(db, 'households', HOUSEHOLD_ID),
-      {
-        people,
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp()
-      },
-      { merge: true }
-    )
-
-    await setDoc(
-      doc(db, 'households', HOUSEHOLD_ID, 'kids', account.name),
-      {
-        role: account.role,
-        updatedAt: serverTimestamp()
-      },
-      { merge: true }
-    )
+      setMessage(`가족 방이 만들어졌어요! 코드: ${familyId}`)
+      alert(`우리 가족 코드: ${familyId}\n이 코드를 아이들에게 알려주세요!`)
+    } catch (error) {
+      console.error(error)
+      setMessage('방 생성 실패! 이미 사용 중인 아이디일 수 있습니다.')
+    } finally { setBusy(false) }
   }
 
   const handleLogin = async () => {
-    const rawId = (loginId || '').trim()
-    if (!rawId || !loginPw) {
-      setMessage('아이디와 비밀번호를 입력해 주세요.')
+    if (!loginFamilyId || !loginId || !loginPw) {
+      setMessage('가족 코드, 아이디, 비밀번호를 입력해 주세요.')
       return
     }
-
-    if (!ACCOUNTS[rawId]) {
-      setMessage('가족용으로 정한 아이디만 로그인할 수 있어요.')
-      return
-    }
-
     setBusy(true)
-    setMessage('')
     try {
-      await signInWithEmailAndPassword(auth, normalizeIdToEmail(rawId), loginPw)
-      await ensureProfile(rawId)
+      const email = normalizeIdToEmail(loginId, loginFamilyId)
+      await signInWithEmailAndPassword(auth, email, loginPw)
     } catch (error) {
       console.error(error)
-      setMessage('로그인에 실패했어요. 비밀번호를 한 번 더 확인해 주세요.')
-    } finally {
-      setBusy(false)
-    }
+      setMessage('로그인 실패! 코드나 비밀번호를 확인해 주세요.')
+    } finally { setBusy(false) }
   }
 
   const handleRegister = async () => {
-    const rawId = (loginId || '').trim()
-    if (!rawId || !loginPw) {
-      setMessage('아이디와 비밀번호를 입력해 주세요.')
+    if (!loginFamilyId || !loginId || !loginPw) {
+      setMessage('가족 코드, 아이디, 비밀번호를 입력해 주세요.')
       return
     }
-
-    if (!ACCOUNTS[rawId]) {
-      setMessage('이 앱에서는 정해진 3개 아이디만 사용할 수 있어요.')
-      return
-    }
-
     setBusy(true)
-    setMessage('')
     try {
-      await createUserWithEmailAndPassword(auth, normalizeIdToEmail(rawId), loginPw)
-      await ensureProfile(rawId)
-      setMessage('계정이 만들어졌어요. 이제 같은 아이디로 로그인하면 돼요.')
+      // Check if family exists and if the ID is registered by parent
+      const houseSnap = await getDoc(doc(db, 'households', loginFamilyId))
+      if (!houseSnap.exists()) {
+        setMessage('존재하지 않는 가족 코드입니다.')
+        setBusy(false); return
+      }
+      const houseData = houseSnap.data()
+      const person = houseData.people[loginId]
+      if (!person) {
+        setMessage('엄마가 먼저 아이 이름을 등록해줘야 해요! 😊')
+        setBusy(false); return
+      }
+
+      const email = normalizeIdToEmail(loginId, loginFamilyId)
+      const userRes = await createUserWithEmailAndPassword(auth, email, loginPw)
+      
+      // Update user profile
+      await setDoc(doc(db, 'users', userRes.user.uid), {
+        uid: userRes.user.uid,
+        loginId,
+        householdId: loginFamilyId,
+        role: person.role || 'child',
+        name: loginId,
+        displayName: person.displayName || loginId,
+        createdAt: serverTimestamp()
+      })
+
+      setMessage('계정 생성 성공! 이제 로그인해 보세요.')
       setMode('login')
     } catch (error) {
       console.error(error)
-      setMessage('계정 생성에 실패했어요. 이미 계정이 있거나 비밀번호가 너무 짧을 수 있어요.')
-    } finally {
-      setBusy(false)
-    }
+      setMessage('계정 생성 실패! 이미 계정이 있을 수 있습니다.')
+    } finally { setBusy(false) }
   }
+
+  const handleLogout = () => signOut(auth)
 
   const handleChangePassword = async (currentPassword, nextPassword) => {
-    if (!auth.currentUser || !profile?.loginId) {
-      return { ok: false, message: '로그인 상태를 다시 확인해 주세요.' }
-    }
-
+    if (!auth.currentUser || !profile?.loginId || !profile?.householdId) return { ok: false, message: '오류가 발생했습니다.' }
     try {
-      const credential = EmailAuthProvider.credential(
-        normalizeIdToEmail(profile.loginId),
-        currentPassword
-      )
+      const credential = EmailAuthProvider.credential(normalizeIdToEmail(profile.loginId, profile.householdId), currentPassword)
       await reauthenticateWithCredential(auth.currentUser, credential)
       await updatePassword(auth.currentUser, nextPassword)
-      return { ok: true, message: '비밀번호가 바뀌었어요.' }
-    } catch (error) {
-      console.error(error)
-      if (error?.code === 'auth/invalid-credential' || error?.code === 'auth/wrong-password') {
-        return { ok: false, message: '현재 비밀번호가 맞지 않아요.' }
-      }
-      if (error?.code === 'auth/weak-password') {
-        return { ok: false, message: '새 비밀번호는 6자 이상으로 해 주세요.' }
-      }
-      return { ok: false, message: '비밀번호 변경에 실패했어요. 잠시 후 다시 시도해 주세요.' }
-    }
+      return { ok: true, message: '비밀번호가 변경되었습니다.' }
+    } catch (e) { return { ok: false, message: '비밀번호 변경 실패!' } }
   }
 
-  const handleLogout = async () => {
-    await signOut(auth)
-  }
-
-  if (!authUser?.uid || !user) {
+  if (!authUser?.uid || !profile) {
     return (
       <div className="login-shell">
         <div className="login-spark login-spark-a" />
         <div className="login-spark login-spark-b" />
-        <div className="login-spark login-spark-c" />
-
         <div className="login-layout">
           <section className="login-hero">
-            <div className="login-title-chip">우리 가족 시간표</div>
-            <h1 className="login-title">귀엽고 쉽게, 매일 보는 스케줄</h1>
+            <div className="login-title-chip">우리가족 스케줄러</div>
+            <h1 className="login-title">함께 계획하고<br/>함께 성장해요</h1>
             <p className="login-copy">
-              엄마와 아이들이 같은 화면을 보면서 오늘 할 일을 챙길 수 있게 만들었어요.
-              먼저 내 카드를 누르고 비밀번호만 입력하면 됩니다.
+              엄마와 아이가 실시간으로 소통하는 특별한 공간입니다.<br/>
+              가족 코드로 입장하여 오늘의 코인을 모아보세요!
             </p>
-
-            <div className="account-grid">
-              {Object.entries(ACCOUNTS).map(([id, info]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`account-card ${loginId === id ? 'account-card-active' : ''}`}
-                  style={{ background: info.background }}
-                  onClick={() => {
-                    setLoginId(id)
-                    setMessage('')
-                  }}
-                >
-                  <div className="account-mascot">{info.mascot}</div>
-                  <div className="account-badge" style={{ color: info.accent }}>
-                    {info.badge}
-                  </div>
-                  <div className="account-name">{info.displayName || info.name}</div>
-                  <div className="account-id">{id}</div>
-                </button>
-              ))}
-            </div>
           </section>
 
           <section className="login-panel glass">
             <div className="login-panel-inner">
               <div className="login-panel-tabs">
-                <button className={mode === 'login' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('login')}>
-                  로그인
-                </button>
-                <button className={mode === 'register' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('register')}>
-                  처음 계정 만들기
-                </button>
+                <button className={mode === 'login' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('login')}>로그인</button>
+                <button className={mode === 'register' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('register')}>처음 계정 만들기</button>
+                <button className={mode === 'createFamily' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('createFamily')}>새 방 만들기</button>
               </div>
 
               <div className="login-panel-box">
                 <div className="login-panel-heading">
-                  {mode === 'login' ? '어서 와, 오늘도 반가워' : '처음 한 번만 비밀번호 만들기'}
+                  {mode === 'login' ? '로그인' : mode === 'register' ? '아이 계정 만들기' : '새 가족 방 만들기'}
                 </div>
-                <div className="login-panel-subtext">
-                  아이디는 고정이에요. 카드 선택 후 비밀번호만 입력하면 됩니다.
-                </div>
-
+                
                 <div className="login-input-stack">
+                  {(mode === 'login' || mode === 'register') && (
+                    <input className="input-field cute-input" placeholder="가족 코드 (Family ID)" value={loginFamilyId} onChange={(e) => setLoginFamilyId(e.target.value.toUpperCase())} />
+                  )}
+                  {mode === 'createFamily' && (
+                    <input className="input-field cute-input" placeholder="가족 이름 (예: 지희네집)" value={familyName} onChange={(e) => setFamilyName(e.target.value)} />
+                  )}
                   <input className="input-field cute-input" placeholder="아이디" value={loginId} onChange={(e) => setLoginId(e.target.value)} />
                   <input className="input-field cute-input" placeholder="비밀번호" type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} />
                 </div>
 
-                {selectedAccount && (
-                  <div className="login-hint">
-                    선택한 계정: <strong>{selectedAccount.displayName || selectedAccount.name}</strong>
-                  </div>
-                )}
-
                 {message && (
-                  <div className={`login-message ${message.includes('실패') || message.includes('맞지') || message.includes('정해진') ? 'login-message-error' : 'login-message-ok'}`}>
+                  <div className={`login-message ${message.includes('실패') || message.includes('않는') ? 'login-message-error' : 'login-message-ok'}`}>
                     {message}
                   </div>
                 )}
 
-                <button className="login-submit" disabled={busy} onClick={mode === 'login' ? handleLogin : handleRegister}>
-                  {busy ? '잠깐만 기다려 줘' : mode === 'login' ? '로그인하기' : '계정 만들기'}
+                <button className="login-submit" disabled={busy} onClick={mode === 'login' ? handleLogin : mode === 'register' ? handleRegister : handleCreateFamily}>
+                  {busy ? '처리 중...' : mode === 'login' ? '로그인하기' : mode === 'register' ? '계정 만들기' : '가족 방 만들기'}
                 </button>
 
                 <div className="login-mini-note">
-                  비밀번호를 바꾸고 싶을 때는 로그인 후 `설정`에서 직접 바꿀 수 있어요.
+                  {mode === 'login' ? '가족 코드를 꼭 입력해야 해요!' : mode === 'register' ? '엄마가 미리 이름을 등록해줘야 가입할 수 있어요.' : '가입 후 가족 코드를 꼭 메모하세요!'}
                 </div>
               </div>
             </div>
@@ -361,8 +250,8 @@ export default function App() {
       onLogout={handleLogout}
       onUpdateUser={() => {}}
       onChangePassword={handleChangePassword}
-      allUsers={allUsers}
-      cloud={{ db, householdId: HOUSEHOLD_ID }}
+      allUsers={household?.people || {}}
+      cloud={{ db, householdId: profile.householdId }}
     />
   )
 }
