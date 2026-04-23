@@ -27,34 +27,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [newReward, setNewReward] = useState({ text: '', coins: 50 }); const [newEssential, setNewEssential] = useState(''); const [newMessage, setNewMessage] = useState(''); const [messageTarget, setMessageTarget] = useState(''); const [replyText, setReplyText] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null); const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // ROBUST FILTER: Only '손지희' and '손가빈' (exactly one each)
+  // FLEXIBLE FILTER: Find '지희' and '가빈' and ensure uniqueness
   const kidsList = useMemo(() => {
     const list = [];
-    const seenNames = new Set();
-    const targets = ['손지희', '손가빈'];
-    
-    // First, try to find the official IDs
-    const officialIds = ['sjh150717', 'sgb170101'];
-    officialIds.forEach(id => {
-      if (allUsers[id]) {
-        const name = allUsers[id].displayName || allUsers[id].name;
-        if (targets.includes(name)) {
+    const seen = new Set();
+    const targets = ['지희', '가빈'];
+
+    Object.entries(allUsers).forEach(([id, info]) => {
+      const name = (info.displayName || info.name || id).toString();
+      if (targets.some(t => name.includes(t)) && info.role !== 'admin') {
+        const normalized = name.includes('지희') ? '손지희' : '손가빈';
+        if (!seen.has(normalized)) {
+          seen.add(normalized);
           list.push(id);
-          seenNames.add(name);
         }
       }
     });
-
-    // Then, if any are missing or if there are other entries with the same names, ensure we only have the unique ones
-    Object.entries(allUsers).forEach(([id, info]) => {
-      const name = info.displayName || info.name;
-      if (targets.includes(name) && !seenNames.has(name)) {
-        list.push(id);
-        seenNames.add(name);
-      }
-    });
     
-    return list;
+    // Sort to keep '손지희' then '손가빈' if possible
+    return list.sort((a, b) => {
+      const nameA = allUsers[a]?.displayName || '';
+      const nameB = allUsers[b]?.displayName || '';
+      return nameA.includes('지희') ? -1 : 1;
+    });
   }, [allUsers])
 
   useEffect(() => {
