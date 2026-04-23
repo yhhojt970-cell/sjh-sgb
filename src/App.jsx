@@ -108,7 +108,7 @@ export default function App() {
         })
 
         return [
-          info.name,
+          loginId,
           {
             role: matchedEntry?.[1]?.role || info.role,
             loginId,

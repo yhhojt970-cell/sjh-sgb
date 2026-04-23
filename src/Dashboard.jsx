@@ -208,7 +208,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [tasks, selectedDate])
 
-  const todayMessagesForKid = messages.filter((message) => message.date === todayStr && message.kidId === activeKidId)
+  const isMessageForActiveKid = (kidId) => {
+    const info = allUsers[activeKidId] || {}
+    const aliases = [activeKidId, info.loginId, info.name, info.displayName].filter(Boolean)
+    return aliases.includes(kidId)
+  }
+
+  const todayMessagesForKid = messages.filter((message) => message.date === todayStr && isMessageForActiveKid(message.kidId))
   const unreadMessage = todayMessagesForKid.find((message) => !message.read)
   const hasReadToday = todayMessagesForKid.some((message) => message.read)
 
