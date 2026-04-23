@@ -13,7 +13,14 @@ import Dashboard from './Dashboard.jsx'
 import { auth, db } from './firebase'
 import { Star, User, Heart, ShieldCheck, Plus, LogIn, Users, Sparkles, X } from 'lucide-react'
 
-const normalizeIdToEmail = (id, familyId) => `${id.trim().toLowerCase()}@${familyId ? familyId.toLowerCase() : 'kidschedule'}.local`
+// IMPORTANT: Keep existing accounts compatible
+const normalizeIdToEmail = (id, familyId) => {
+  const cleanId = id.trim().toLowerCase()
+  // If it's the old SJH-SGB family or no familyId, use the old format
+  if (!familyId || familyId === 'SJH-SGB') return `${cleanId}@kidschedule.local`
+  // New families get their own domain suffix
+  return `${cleanId}@${familyId.toLowerCase()}.local`
+}
 
 export default function App() {
   const [authUser, setAuthUser] = useState(null)
@@ -107,11 +114,11 @@ export default function App() {
         createdAt: serverTimestamp()
       })
 
-      setMessage(`가족 방이 만들어졌어요! 코드: ${familyId}`)
+      setMessage(`가족 방 성공! 코드: ${familyId}`)
       alert(`우리 가족 코드: ${familyId}\n이 코드를 아이들에게 알려주세요!`)
     } catch (error) {
       console.error(error)
-      setMessage('방 생성 실패! 이미 사용 중인 아이디일 수 있습니다.')
+      setMessage('방 생성 실패! 이미 있는 아이디일 수 있습니다.')
     } finally { setBusy(false) }
   }
 
@@ -132,12 +139,11 @@ export default function App() {
 
   const handleRegister = async () => {
     if (!loginFamilyId || !loginId || !loginPw) {
-      setMessage('가족 코드, 아이디, 비밀번호를 입력해 주세요.')
+      setMessage('정보를 모두 입력해 주세요.')
       return
     }
     setBusy(true)
     try {
-      // Check if family exists and if the ID is registered by parent
       const houseSnap = await getDoc(doc(db, 'households', loginFamilyId))
       if (!houseSnap.exists()) {
         setMessage('존재하지 않는 가족 코드입니다.')
@@ -146,14 +152,13 @@ export default function App() {
       const houseData = houseSnap.data()
       const person = houseData.people[loginId]
       if (!person) {
-        setMessage('엄마가 먼저 아이 이름을 등록해줘야 해요! 😊')
+        setMessage('엄마가 먼저 이름을 등록해줘야 가입할 수 있어요.')
         setBusy(false); return
       }
 
       const email = normalizeIdToEmail(loginId, loginFamilyId)
       const userRes = await createUserWithEmailAndPassword(auth, email, loginPw)
       
-      // Update user profile
       await setDoc(doc(db, 'users', userRes.user.uid), {
         uid: userRes.user.uid,
         loginId,
@@ -164,24 +169,24 @@ export default function App() {
         createdAt: serverTimestamp()
       })
 
-      setMessage('계정 생성 성공! 이제 로그인해 보세요.')
+      setMessage('가입 성공! 이제 로그인해 보세요.')
       setMode('login')
     } catch (error) {
       console.error(error)
-      setMessage('계정 생성 실패! 이미 계정이 있을 수 있습니다.')
+      setMessage('가입 실패! 이미 계정이 있을 수 있습니다.')
     } finally { setBusy(false) }
   }
 
   const handleLogout = () => signOut(auth)
 
   const handleChangePassword = async (currentPassword, nextPassword) => {
-    if (!auth.currentUser || !profile?.loginId || !profile?.householdId) return { ok: false, message: '오류가 발생했습니다.' }
+    if (!auth.currentUser || !profile?.loginId || !profile?.householdId) return { ok: false, message: '오류 발생' }
     try {
       const credential = EmailAuthProvider.credential(normalizeIdToEmail(profile.loginId, profile.householdId), currentPassword)
       await reauthenticateWithCredential(auth.currentUser, credential)
       await updatePassword(auth.currentUser, nextPassword)
-      return { ok: true, message: '비밀번호가 변경되었습니다.' }
-    } catch (e) { return { ok: false, message: '비밀번호 변경 실패!' } }
+      return { ok: true, message: '비밀번호 변경 완료' }
+    } catch (e) { return { ok: false, message: '비밀번호 변경 실패' } }
   }
 
   if (!authUser?.uid || !profile) {
@@ -194,7 +199,7 @@ export default function App() {
             <div className="login-title-chip">우리가족 스케줄러</div>
             <h1 className="login-title">함께 계획하고<br/>함께 성장해요</h1>
             <p className="login-copy">
-              엄마와 아이가 실시간으로 소통하는 특별한 공간입니다.<br/>
+              엄마와 아이가 소통하는 우리만의 공간입니다.<br/>
               가족 코드로 입장하여 오늘의 코인을 모아보세요!
             </p>
           </section>
@@ -203,7 +208,7 @@ export default function App() {
             <div className="login-panel-inner">
               <div className="login-panel-tabs">
                 <button className={mode === 'login' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('login')}>로그인</button>
-                <button className={mode === 'register' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('register')}>처음 계정 만들기</button>
+                <button className={mode === 'register' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('register')}>아이 가입</button>
                 <button className={mode === 'createFamily' ? 'btn-primary' : 'btn-secondary'} onClick={() => setMode('createFamily')}>새 방 만들기</button>
               </div>
 
@@ -214,7 +219,10 @@ export default function App() {
                 
                 <div className="login-input-stack">
                   {(mode === 'login' || mode === 'register') && (
-                    <input className="input-field cute-input" placeholder="가족 코드 (Family ID)" value={loginFamilyId} onChange={(e) => setLoginFamilyId(e.target.value.toUpperCase())} />
+                    <div style={{ position: 'relative' }}>
+                      <input className="input-field cute-input" placeholder="가족 코드 (SJH-SGB)" value={loginFamilyId} onChange={(e) => setLoginFamilyId(e.target.value.toUpperCase())} />
+                      <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', color: '#ff4d6d', fontWeight: '900' }}>코드 필수!</div>
+                    </div>
                   )}
                   {mode === 'createFamily' && (
                     <input className="input-field cute-input" placeholder="가족 이름 (예: 지희네집)" value={familyName} onChange={(e) => setFamilyName(e.target.value)} />
@@ -234,7 +242,7 @@ export default function App() {
                 </button>
 
                 <div className="login-mini-note">
-                  {mode === 'login' ? '가족 코드를 꼭 입력해야 해요!' : mode === 'register' ? '엄마가 미리 이름을 등록해줘야 가입할 수 있어요.' : '가입 후 가족 코드를 꼭 메모하세요!'}
+                  {mode === 'login' ? '가족 코드는 엄마에게 물어보세요! (기존: SJH-SGB)' : mode === 'register' ? '엄마가 미리 이름을 등록해줘야 가입할 수 있어요.' : '가입 후 발급되는 가족 코드를 꼭 메모하세요.'}
                 </div>
               </div>
             </div>
@@ -243,6 +251,8 @@ export default function App() {
       </div>
     )
   }
+
+  const user = { id: profile.name, role: profile.role }
 
   return (
     <Dashboard
