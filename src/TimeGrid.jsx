@@ -314,12 +314,24 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
   )
 }
 
-function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
+function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, essentialChecklist }) {
   return (
     <div className="glass time-grid-shell" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
-      <div className="time-grid-header" style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Clock size={20} style={{ color: 'var(--primary)' }} />
+      <div className="time-grid-header" style={{ padding: '15px 20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(124, 156, 255, 0.03)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flex: 1, overflowX: 'auto', scrollbarWidth: 'none' }}>
+          <Clock size={20} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          
+          {essentialChecklist && essentialChecklist.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 12px', background: 'white', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.03)' }}>
+              <span style={{ fontSize: '11px', fontWeight: '900', color: '#ff4d6d', whiteSpace: 'nowrap' }}>오늘의 필수!</span>
+              {essentialChecklist.map(e => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                  {e.completed ? <Heart size={13} fill="#ff4d6d" color="#ff4d6d" className="animate-pulse" /> : <div style={{ width: '11px', height: '11px', borderRadius: '3px', border: '1.5px solid #ff4d6d', opacity: 0.4 }} />}
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: e.completed ? '#ff4d6d' : '#666' }}>{e.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         {tasks.length === 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'var(--text-muted)' }}>
