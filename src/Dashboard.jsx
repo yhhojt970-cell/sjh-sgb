@@ -466,7 +466,10 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const resetDay = () => {
     if (confirm('오늘의 모든 계획을 삭제하고 초기화할까요?')) {
       const todayStr = format(selectedDate, 'yyyy-MM-dd')
-      applyTaskChange(prev => (prev || []).filter(t => t.date !== todayStr))
+      applyTaskChange(prev => (prev || []).filter(t => {
+        if (t.type === 'class') return true
+        return t.date !== todayStr
+      }))
       addLog('초기화', `${todayStr} 시간표 초기화`)
     }
   }
