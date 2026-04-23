@@ -2,10 +2,26 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
-import { LogOut, Settings, Gift, Trophy, Plus, LayoutGrid, Send, X as CloseIcon, Trash, Calendar, Coins, Check, Users, ChevronLeft, ChevronRight } from 'lucide-react'
-import { format, addDays, subDays, startOfWeek, isSameDay, getDay } from 'date-fns'
+import {
+  Calendar,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  Gift,
+  LayoutGrid,
+  LogOut,
+  Plus,
+  Send,
+  Settings,
+  Trash,
+  Trophy,
+  Users,
+  X as CloseIcon
+} from 'lucide-react'
+import { addDays, format, getDay, isSameDay, startOfWeek, subDays } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -13,16 +29,31 @@ const DEFAULT_DURATION = 50
 
 const buildExpectedEndTime = (startTime, duration = DEFAULT_DURATION) => {
   const [hour, minute] = String(startTime || '00:00').split(':').map(Number)
-  const totalMinutes = hour * 60 + minute + duration
-  const endHour = Math.floor(totalMinutes / 60) % 24
-  const endMinute = totalMinutes % 60
-  return `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`
+  const total = hour * 60 + minute + duration
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+const parseWeekday = (raw) => {
+  const value = String(raw || '').trim().toLowerCase()
+  const map = {
+    sun: 0, sunday: 0, '일': 0, '일요일': 0, '0': 0,
+    mon: 1, monday: 1, '월': 1, '월요일': 1, '1': 1,
+    tue: 2, tuesday: 2, '화': 2, '화요일': 2, '2': 2,
+    wed: 3, wednesday: 3, '수': 3, '수요일': 3, '3': 3,
+    thu: 4, thursday: 4, '목': 4, '목요일': 4, '4': 4,
+    fri: 5, friday: 5, '금': 5, '금요일': 5, '5': 5,
+    sat: 6, saturday: 6, '토': 6, '토요일': 6, '6': 6
+  }
+  return map[value]
 }
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const isAdmin = user?.role === 'admin'
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
   const [activeKidId, setActiveKidId] = useState('')
+  const [resolvedKidDocId, setResolvedKidDocId] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
 
@@ -39,28 +70,20 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showSurprise, setShowSurprise] = useState(false)
   const [showFamilyManager, setShowFamilyManager] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [showClassManager, setShowClassManager] = useState(false)
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50 })
   const [newEssential, setNewEssential] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [messageTarget, setMessageTarget] = useState('')
   const [replyText, setReplyText] = useState('')
+  const [bulkInput, setBulkInput] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
-
-  const kidsList = useMemo(() => {
-    const priority = ['지희', '손지희', '가빈', '손가빈']
-
-    return Object.entries(allUsers)
-      .filter(([, info]) => info?.role === 'child')
-      .map(([id]) => id)
-      .sort((a, b) => {
-        const aName = allUsers[a]?.displayName || allUsers[a]?.name || a
-        const bName = allUsers[b]?.displayName || allUsers[b]?.name || b
-        return priority.indexOf(aName) - priority.indexOf(bName)
-      })
-  }, [allUsers])
+  const kidsList = useMemo(
+    () => Object.entries(allUsers).filter(([, info]) => info?.role === 'child').map(([id]) => id),
+    [allUsers]
+  )
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768)
@@ -69,20 +92,49 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [])
 
   useEffect(() => {
-    if (!activeKidId && kidsList.length > 0) {
-      setActiveKidId(kidsList[0])
-    }
-  }, [kidsList, activeKidId])
+    if (!activeKidId && kidsList.length > 0) setActiveKidId(kidsList[0])
+  }, [activeKidId, kidsList])
 
   useEffect(() => {
-    if (activeKidId && !kidsList.includes(activeKidId)) {
-      setActiveKidId(kidsList[0] || '')
-    }
-  }, [kidsList, activeKidId])
+    if (activeKidId && !kidsList.includes(activeKidId)) setActiveKidId(kidsList[0] || '')
+  }, [activeKidId, kidsList])
 
   useEffect(() => {
-    if (!activeKidId || !isCloud) return
-    const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
+    if (!activeKidId) return
+    const info = allUsers[activeKidId] || {}
+    const aliases = [activeKidId, info.name, info.displayName, info.loginId].filter(Boolean)
+    const unique = [...new Set(aliases)]
+
+    let cancelled = false
+    const resolve = async () => {
+      if (!isCloud) {
+        setResolvedKidDocId(unique[0] || activeKidId)
+        return
+      }
+      let firstExisting = null
+      for (const id of unique) {
+        const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', id))
+        if (snap.exists()) {
+          const data = snap.data() || {}
+          if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+            if (!cancelled) setResolvedKidDocId(id)
+            return
+          }
+          if (!firstExisting) firstExisting = id
+        }
+      }
+      if (!cancelled) setResolvedKidDocId(firstExisting || unique[0] || activeKidId)
+    }
+
+    resolve().catch(console.error)
+    return () => {
+      cancelled = true
+    }
+  }, [activeKidId, allUsers, isCloud, cloud?.db, cloud?.householdId])
+
+  useEffect(() => {
+    if (!resolvedKidDocId || !isCloud) return
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId)
     return onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
       setTasks(Array.isArray(data?.tasks) ? data.tasks : [])
@@ -90,7 +142,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setEssentials(Array.isArray(data?.essentials) ? data.essentials : [])
       setSpentCoins(Number(data?.spentCoins || 0))
     })
-  }, [activeKidId, isCloud, cloud?.db, cloud?.householdId])
+  }, [resolvedKidDocId, isCloud, cloud?.db, cloud?.householdId])
 
   useEffect(() => {
     if (!isCloud) return
@@ -109,17 +161,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [isCloud, cloud?.db, cloud?.householdId])
 
   const persistKidState = async (overrides = {}) => {
-    if (!isCloud || !activeKidId) return
+    if (!isCloud || !resolvedKidDocId) return
     await setDoc(
-      doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId),
-      {
-        tasks,
-        rewards,
-        essentials,
-        spentCoins,
-        ...overrides,
-        updatedAt: serverTimestamp()
-      },
+      doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId),
+      { tasks, rewards, essentials, spentCoins, ...overrides, updatedAt: serverTimestamp() },
       { merge: true }
     )
   }
@@ -131,35 +176,34 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), index))
   const todayStr = format(selectedDate, 'yyyy-MM-dd')
-  const todayTasks = tasks.filter((task) => (task.type === 'class' && task.weekday === getDay(selectedDate)) || task.date === todayStr)
-  const availableCoins = useMemo(() => {
-    return tasks
-      .filter((task) => task.completed && task.type !== 'class')
-      .reduce((sum, task) => sum + (task.coins || (task.type === 'study' ? 1 : 0)), 0) - spentCoins
-  }, [tasks, spentCoins])
+
+  const todayTasks = useMemo(
+    () => tasks.filter((task) => (task.type === 'class' ? Number(task.weekday) === getDay(selectedDate) : task.date === todayStr)),
+    [tasks, selectedDate, todayStr]
+  )
+
+  const availableCoins = useMemo(
+    () => tasks.filter((task) => task.completed && task.type !== 'class').reduce((sum, task) => sum + (task.coins || (task.type === 'study' ? 1 : 0)), 0) - spentCoins,
+    [tasks, spentCoins]
+  )
 
   const weekMonthReport = useMemo(() => {
-    const selectedYear = selectedDate.getFullYear()
-    const selectedMonth = selectedDate.getMonth()
-    const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
-    const weekStartKey = format(weekStart, 'yyyy-MM-dd')
-
-    const completedTasks = tasks.filter((task) => task.completed && task.type !== 'class' && task.date)
-
-    const weekTasks = completedTasks.filter((task) => {
-      const taskDate = new Date(task.date)
-      return !Number.isNaN(taskDate.getTime()) && format(startOfWeek(taskDate, { weekStartsOn: 1 }), 'yyyy-MM-dd') === weekStartKey
+    const year = selectedDate.getFullYear()
+    const month = selectedDate.getMonth()
+    const currentWeek = format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+    const completed = tasks.filter((task) => task.completed && task.type !== 'class' && task.date)
+    const weekTasks = completed.filter((task) => {
+      const date = new Date(task.date)
+      return !Number.isNaN(date.getTime()) && format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd') === currentWeek
     })
-
-    const monthTasks = completedTasks.filter((task) => {
-      const taskDate = new Date(task.date)
-      return !Number.isNaN(taskDate.getTime()) && taskDate.getFullYear() === selectedYear && taskDate.getMonth() === selectedMonth
+    const monthTasks = completed.filter((task) => {
+      const date = new Date(task.date)
+      return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === month
     })
-
     return {
-      weekCoins: weekTasks.reduce((sum, task) => sum + (task.coins || (task.type === 'study' ? 1 : 0)), 0),
+      weekCoins: weekTasks.reduce((sum, task) => sum + (task.coins || 1), 0),
       weekCount: weekTasks.length,
-      monthCoins: monthTasks.reduce((sum, task) => sum + (task.coins || (task.type === 'study' ? 1 : 0)), 0),
+      monthCoins: monthTasks.reduce((sum, task) => sum + (task.coins || 1), 0),
       monthCount: monthTasks.length
     }
   }, [tasks, selectedDate])
@@ -172,17 +216,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const handleSendReply = async () => {
     if (!replyText || !unreadMessage) return
-    const nextMessages = messages.map((message) =>
-      message.id === unreadMessage.id ? { ...message, reply: replyText, read: true } : message
-    )
-    await mergeMetaDoc('messages', { messages: nextMessages, updatedAt: serverTimestamp() })
+    const next = messages.map((message) => (message.id === unreadMessage.id ? { ...message, reply: replyText, read: true } : message))
+    await mergeMetaDoc('messages', { messages: next, updatedAt: serverTimestamp() })
     setReplyText('')
     setShowSurprise(false)
   }
 
   const addTaskFromPalette = async (hour, subject) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
-    const nextTask = {
+    const newTask = {
       id: Math.random().toString(36).slice(2, 11),
       name: subject.name,
       color: subject.color,
@@ -195,13 +237,66 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       date: todayStr,
       coins: subject.coins || 1
     }
-    const nextTasks = [...tasks, nextTask]
+    const nextTasks = [...tasks, newTask]
     setTasks(nextTasks)
     await persistKidState({ tasks: nextTasks })
   }
 
+  const handleBulkAdd = async () => {
+    if (!bulkInput.trim()) return
+    const lines = bulkInput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    const byKid = new Map()
+
+    lines.forEach((line) => {
+      const cols = line.includes('\t') ? line.split('\t') : line.split(',').map((c) => c.trim())
+      if (cols.length < 5) return
+
+      const [kidRaw, dayRaw, subjectRaw, timeRaw, durationRaw] = cols
+      const kidId = kidsList.find((id) => {
+        const name = getFullName(id)
+        return name.includes(kidRaw) || kidRaw.includes(name)
+      }) || activeKidId
+
+      const weekday = parseWeekday(dayRaw)
+      const duration = parseInt(durationRaw, 10)
+      const startTime = /^\d{1,2}:\d{2}$/.test(timeRaw) ? timeRaw : `${String(parseInt(timeRaw, 10) || 0).padStart(2, '0')}:00`
+      if (Number.isNaN(weekday) || Number.isNaN(duration) || !subjectRaw) return
+
+      const task = {
+        id: `class-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: subjectRaw.trim(),
+        color: '#7c9cff',
+        startTime,
+        expectedEndTime: buildExpectedEndTime(startTime, duration),
+        duration,
+        type: 'class',
+        icon: 'Book',
+        completed: false,
+        weekday
+      }
+      if (!byKid.has(kidId)) byKid.set(kidId, [])
+      byKid.get(kidId).push(task)
+    })
+
+    if (byKid.size === 0) {
+      alert('붙여넣기 형식을 확인해 주세요: 이름\t요일\t과목명\t시간\t분')
+      return
+    }
+
+    for (const [kidId, items] of byKid.entries()) {
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
+        { tasks: arrayUnion(...items), updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    }
+
+    setBulkInput('')
+    setShowClassManager(false)
+  }
+
   const glassStyle = {
-    background: 'rgba(255, 255, 255, 0.7)',
+    background: 'rgba(255,255,255,0.7)',
     backdropFilter: 'blur(15px)',
     WebkitBackdropFilter: 'blur(15px)',
     border: '1px solid rgba(255,255,255,0.3)'
@@ -224,12 +319,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           setActiveDragItem(null)
           return
         }
-
         const data = active.data.current
         if (data?.type === 'palette' && over.id.toString().startsWith('hour-')) {
           await addTaskFromPalette(over.data.current.hour, data.subject)
         }
-
         setActiveDragItem(null)
       }}
     >
@@ -243,10 +336,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
               <div>
-                <h1 style={{ fontSize: isMobile ? '17px' : '20px', fontWeight: 900, color: '#333', margin: 0 }}>
+                <h1 style={{ fontSize: isMobile ? '18px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {getFullName(activeKidId)}
-                  <span style={{ fontSize: '12px', color: PRIMARY_PINK, marginLeft: '6px' }}>
-                    <Coins size={14} style={{ verticalAlign: 'middle' }} /> {availableCoins}
+                  <span style={{ fontSize: isMobile ? '15px' : '16px', color: PRIMARY_PINK, background: '#fff0f3', border: '1px solid #ffd7e3', borderRadius: '999px', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Coins size={15} /> {availableCoins}
                   </span>
                 </h1>
               </div>
@@ -254,7 +347,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px' }}>
               {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22} /></button>}
-              {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
+              {isAdmin && <button onClick={() => setShowClassManager(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
+              {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><Gift size={isMobile ? 18 : 22} /></button>}
               <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22} /></button>
               <button onClick={() => setShowSettings(true)} className="header-btn-original"><Settings size={isMobile ? 18 : 22} /></button>
               <button onClick={onLogout} className="header-btn-original" style={{ color: PRIMARY_PINK }}><LogOut size={isMobile ? 18 : 22} /></button>
@@ -278,7 +372,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
             <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronRight size={isMobile ? 24 : 28} /></button>
           </div>
-
           <div style={{ display: 'flex', gap: '4px' }}>
             {weekDays.map((day) => (
               <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ flex: 1, padding: isMobile ? '10px 0' : '15px 0', borderRadius: '15px', border: 'none', background: isSameDay(day, selectedDate) ? PRIMARY_PINK : 'transparent', color: isSameDay(day, selectedDate) ? 'white' : '#666', fontWeight: 'bold' }}>
@@ -305,14 +398,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               isMobile={isMobile}
               essentialChecklist={essentials}
               onUpdateTask={(id, updates) => {
-                const nextTasks = tasks.map((task) => (task.id === id ? { ...task, ...updates } : task))
-                setTasks(nextTasks)
-                persistKidState({ tasks: nextTasks })
+                const next = tasks.map((task) => (task.id === id ? { ...task, ...updates } : task))
+                setTasks(next)
+                persistKidState({ tasks: next })
               }}
               onDeleteTask={(id) => {
-                const nextTasks = tasks.filter((task) => task.id !== id)
-                setTasks(nextTasks)
-                persistKidState({ tasks: nextTasks })
+                const next = tasks.filter((task) => task.id !== id)
+                setTasks(next)
+                persistKidState({ tasks: next })
               }}
               onAddSpecialEvent={(hour) => {
                 const name = prompt('특별 일정 이름')
@@ -329,19 +422,33 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   completed: false,
                   date: todayStr
                 }
-                const nextTasks = [...tasks, nextTask]
-                setTasks(nextTasks)
-                persistKidState({ tasks: nextTasks })
+                const next = [...tasks, nextTask]
+                setTasks(next)
+                persistKidState({ tasks: next })
               }}
             />
           </div>
         </main>
 
+        {showClassManager && isAdmin && (
+          <div className="modal-overlay" onClick={() => setShowClassManager(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '25px', maxWidth: '560px', width: '95%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</h2>
+                <button onClick={() => setShowClassManager(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
+              </div>
+              <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>형식: 이름[TAB]요일[TAB]과목명[TAB]시간[TAB]분</p>
+              <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '140px', marginBottom: '10px' }} />
+              <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+            </div>
+          </div>
+        )}
+
         {showPalette && (
           <div className="modal-overlay" onClick={() => setShowPalette(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>과목 선택하기</h2>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>과목 선택</h2>
                 <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={28} /></button>
               </div>
               <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} />
@@ -353,13 +460,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           <div className="modal-overlay" onClick={() => setShowGoals(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '30px', maxWidth: isMobile ? '95%' : '450px', width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>코인과 꼭 관리</h2>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>코인/꼭 관리</h2>
                 <button onClick={() => setShowGoals(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={24} /></button>
               </div>
-
               <div style={{ background: LIGHT_PINK, padding: '20px', borderRadius: '18px', textAlign: 'center', marginBottom: '25px' }}>
                 <div style={{ fontSize: '14px', color: PRIMARY_PINK, fontWeight: 'bold', marginBottom: '5px' }}>현재 코인</div>
-                <strong style={{ fontSize: '32px' }}>{availableCoins}</strong>
+                <strong style={{ fontSize: '34px' }}>{availableCoins}</strong>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '25px' }}>
@@ -378,25 +484,24 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               {isAdmin && (
                 <div style={{ display: 'grid', gap: '20px', marginBottom: '25px' }}>
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '12px' }}>보상 추가</h3>
+                    <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '12px' }}>보상 등록</h3>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                       <input className="input-field" placeholder="보상 이름" value={newReward.text} onChange={(e) => setNewReward({ ...newReward, text: e.target.value })} style={{ flex: 2 }} />
                       <input className="input-field" type="number" placeholder="코인" value={newReward.coins} onChange={(e) => setNewReward({ ...newReward, coins: parseInt(e.target.value, 10) || 0 })} style={{ flex: 1 }} />
-                      <button onClick={() => { if (newReward.text) { const nextRewards = [...rewards, { id: Date.now(), ...newReward }]; setRewards(nextRewards); persistKidState({ rewards: nextRewards }); setNewReward({ text: '', coins: 50 }); } }} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
+                      <button onClick={() => { if (newReward.text) { const next = [...rewards, { id: Date.now(), ...newReward }]; setRewards(next); persistKidState({ rewards: next }); setNewReward({ text: '', coins: 50 }); } }} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
                     </div>
                   </div>
-
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
                     <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '12px' }}>꼭 할 일</h3>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                      <input className="input-field" placeholder="꼭 할 일 이름" value={newEssential} onChange={(e) => setNewEssential(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newEssential) { const nextEssentials = [...essentials, { id: Date.now(), name: newEssential }]; setEssentials(nextEssentials); persistKidState({ essentials: nextEssentials }); setNewEssential(''); } }} />
-                      <button onClick={() => { if (newEssential) { const nextEssentials = [...essentials, { id: Date.now(), name: newEssential }]; setEssentials(nextEssentials); persistKidState({ essentials: nextEssentials }); setNewEssential(''); } }} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
+                      <input className="input-field" placeholder="꼭 할 일 이름" value={newEssential} onChange={(e) => setNewEssential(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newEssential) { const next = [...essentials, { id: Date.now(), name: newEssential }]; setEssentials(next); persistKidState({ essentials: next }); setNewEssential(''); } }} />
+                      <button onClick={() => { if (newEssential) { const next = [...essentials, { id: Date.now(), name: newEssential }]; setEssentials(next); persistKidState({ essentials: next }); setNewEssential(''); } }} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {essentials.map((item) => (
                         <div key={item.id} style={{ background: 'white', padding: '6px 12px', borderRadius: '10px', border: '1px solid #ffdeeb', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {item.name}
-                          <Trash size={12} color="#ff4d6d" style={{ cursor: 'pointer' }} onClick={() => { const nextEssentials = essentials.filter((entry) => entry.id !== item.id); setEssentials(nextEssentials); persistKidState({ essentials: nextEssentials }); }} />
+                          <Trash size={12} color="#ff4d6d" style={{ cursor: 'pointer' }} onClick={() => { const next = essentials.filter((entry) => entry.id !== item.id); setEssentials(next); persistKidState({ essentials: next }); }} />
                         </div>
                       ))}
                     </div>
@@ -411,11 +516,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       <strong style={{ fontSize: '16px' }}>{reward.text}</strong>
                       <div style={{ fontSize: '12px', color: availableCoins >= reward.coins ? PRIMARY_PINK : '#666', fontWeight: 'bold' }}>{reward.coins} 코인</div>
                     </div>
-                    {isAdmin && (
-                      <button onClick={async () => { const nextSpentCoins = spentCoins + reward.coins; setSpentCoins(nextSpentCoins); await persistKidState({ spentCoins: nextSpentCoins }); }} className="btn-primary" style={{ padding: '8px 15px', fontSize: '13px' }}>
-                        지급 완료
-                      </button>
-                    )}
+                    {isAdmin && <button onClick={async () => { const next = spentCoins + reward.coins; setSpentCoins(next); await persistKidState({ spentCoins: next }); }} className="btn-primary" style={{ padding: '8px 15px', fontSize: '13px' }}>지급 완료</button>}
                   </div>
                 ))}
               </div>
@@ -454,10 +555,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>설정</h2>
                 <button onClick={() => setShowSettings(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
               </div>
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <p style={{ fontSize: '14px', color: '#666' }}>현재 기능 복구를 우선해 두었습니다. 로그아웃은 바로 사용할 수 있어요.</p>
-                <button onClick={onLogout} className="btn-primary" style={{ background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
-              </div>
+              <button onClick={onLogout} className="btn-primary" style={{ width: '100%', background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
             </div>
           </div>
         )}
@@ -465,7 +563,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         {showSurprise && unreadMessage && (
           <div className="modal-overlay" onClick={() => setShowSurprise(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center', background: 'white', borderRadius: isMobile ? '24px' : '30px', padding: isMobile ? '30px 20px' : '40px', maxWidth: isMobile ? '90%' : '380px' }}>
-              <h2 style={{ fontWeight: 900, marginBottom: '15px', color: PRIMARY_PINK, fontSize: isMobile ? '19px' : '22px' }}>메시지가 도착했어요</h2>
+              <h2 style={{ fontWeight: 900, marginBottom: '15px', color: PRIMARY_PINK, fontSize: isMobile ? '19px' : '22px' }}>메시지 확인</h2>
               <div style={{ background: '#fff9fb', padding: isMobile ? '20px' : '25px', borderRadius: '18px', marginBottom: '25px', fontWeight: 700, border: `1px dashed ${PRIMARY_PINK}`, color: '#555', fontSize: isMobile ? '16px' : '17px' }}>{unreadMessage.text}</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input className="input-field" placeholder="답장하기" value={replyText} onChange={(e) => setReplyText(e.target.value)} style={{ padding: '12px', borderRadius: '12px' }} onKeyDown={(e) => e.key === 'Enter' && handleSendReply()} />
@@ -488,11 +586,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   {kidsList.map((id) => <option key={id} value={id}>{getFullName(id)}</option>)}
                 </select>
                 <textarea className="input-field" placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} style={{ height: '70px', marginBottom: '8px' }} />
-                <button onClick={async () => { if (newMessage && messageTarget) { await mergeMetaDoc('messages', { messages: arrayUnion({ id: Date.now(), text: newMessage, date: todayStr, kidId: messageTarget, read: false }), updatedAt: serverTimestamp() }); setNewMessage(''); } }} className="btn-primary" style={{ width: '100%' }}>
-                  전송
-                </button>
+                <button onClick={async () => { if (newMessage && messageTarget) { await mergeMetaDoc('messages', { messages: arrayUnion({ id: Date.now(), text: newMessage, date: todayStr, kidId: messageTarget, read: false }), updatedAt: serverTimestamp() }); setNewMessage(''); } }} className="btn-primary" style={{ width: '100%' }}>전송</button>
               </div>
-
               <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
                 {messages.slice().reverse().map((message) => (
                   <div key={message.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '12px', fontSize: '12px' }}>

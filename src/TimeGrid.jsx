@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, Trash2, Play, Star, Sparkles, Heart } from 'lucide-react'
+import { Clock, Heart, Play, Sparkles, Star, Trash2 } from 'lucide-react'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -11,6 +11,12 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
   const hourTasks = tasks.filter((task) => parseInt(task.startTime.split(':')[0], 10) === hour)
+
+  useEffect(() => {
+    if (!isMobile || !activeSlot) return
+    const timer = setTimeout(() => setActiveSlot(false), 2200)
+    return () => clearTimeout(timer)
+  }, [activeSlot, isMobile])
 
   return (
     <div
@@ -31,16 +37,16 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
             onAddSpecialEvent(hour)
             setActiveSlot(false)
           }}
-          style={{ position: 'absolute', left: isMobile ? '70px' : '65px', top: '10px', zIndex: 10, background: '#fbbf24', color: 'white', border: 'none', borderRadius: '10px', padding: '6px 12px', fontSize: isMobile ? '12px' : '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(251,191,36,0.4)' }}
+          style={{ position: 'absolute', right: '10px', top: '8px', zIndex: 10, background: '#fbbf24', color: 'white', border: 'none', borderRadius: '10px', padding: isMobile ? '7px 11px' : '6px 12px', fontSize: isMobile ? '12px' : '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', boxShadow: '0 4px 10px rgba(251,191,36,0.4)' }}
         >
           <Star size={14} fill="white" />
           특별 일정 추가
         </button>
       )}
 
-      <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px' }}>
+      <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
-          <div key={task.id} style={{ flex: isMobile ? '1 1 100%' : '1 1 calc(33.333% - 10px)', minWidth: isMobile ? '100%' : '240px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
+          <div key={task.id} style={{ flex: isMobile ? '1 1 100%' : '1 1 calc(33.333% - 10px)', minWidth: isMobile ? '100%' : '260px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
             <TaskCard task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
           </div>
         ))}
@@ -52,21 +58,30 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
 function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, data: { type: 'task', task } })
 
+  const actualStart = task.actualStartTime || task.startTimeActual || ''
+  const actualEnd = task.actualEndTime || task.endTimeActual || ''
+  const actualDuration = task.durationActual || task.actualDuration || ''
+  const classStatus = task.status || (task.completed ? 'completed' : '')
+
   const handleStartTimer = () => {
-    if (!task.startTimeActual) {
-      onUpdateTask(task.id, { startTimeActual: format(new Date(), 'HH:mm'), status: 'studying' })
-    }
+    if (actualStart) return
+    const now = format(new Date(), 'HH:mm')
+    onUpdateTask(task.id, { startTimeActual: now, actualStartTime: now, status: 'studying' })
   }
 
   const handleComplete = () => {
-    const now = new Date()
-    const updates = { completed: true, status: 'completed', endTimeActual: format(now, 'HH:mm') }
+    const nowDate = new Date()
+    const now = format(nowDate, 'HH:mm')
+    const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now }
+    const startValue = actualStart
 
-    if (task.startTimeActual) {
-      const [startHour, startMinute] = task.startTimeActual.split(':').map(Number)
+    if (startValue) {
+      const [h, m] = startValue.split(':').map(Number)
       const startedAt = new Date()
-      startedAt.setHours(startHour, startMinute, 0, 0)
-      updates.durationActual = Math.max(0, Math.round((now - startedAt) / 60000))
+      startedAt.setHours(h, m, 0, 0)
+      const minutes = Math.max(0, Math.round((nowDate - startedAt) / 60000))
+      updates.durationActual = minutes
+      updates.actualDuration = minutes
     }
 
     onUpdateTask(task.id, updates)
@@ -110,7 +125,9 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             <div style={{ fontWeight: 900, color: '#333', fontSize: '15px' }}>
               {task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
             </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>{task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</div>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+            </div>
           </div>
         </div>
         {isAdmin && <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>}
@@ -119,15 +136,19 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
         {task.type === 'class' ? (
           <>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: !task.completed, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'completed' ? '#42c99b' : '#f1f5f9', color: task.status === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'holiday' ? '#3b82f6' : '#f1f5f9', color: task.status === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: task.status === 'absent' ? '#ef4444' : '#f1f5f9', color: task.status === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: !task.completed, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
           </>
         ) : (
           <>
-            {!task.completed && !task.startTimeActual && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
-            {task.startTimeActual && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#42c99b', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>}
-            {task.completed && <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>✨ {task.startTimeActual} ~ {task.endTimeActual} ({task.durationActual}분 공부 완료)</div>}
+            {!task.completed && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
+            {actualStart && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#42c99b', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>}
+            {task.completed && (
+              <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
+                {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration || '-'}분)` : '✨ 완료'}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -142,7 +163,6 @@ export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, i
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 900, color: '#333', whiteSpace: 'nowrap' }}>
           <Clock color={PRIMARY_PINK} /> 꼭
         </div>
-
         <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
           {essentialChecklist.map((item) => {
             const isDone = tasks.some((task) => task.name.includes(item.name) && task.completed)
