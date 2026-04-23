@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSe
 import { arrayMove } from '@dnd-kit/sortable'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
-import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid } from 'lucide-react'
+import { LogOut, Settings, Star, User, ChevronLeft, ChevronRight, ClipboardList, Gift, Trophy, CheckCircle2, Copy, Trash2, Plus, LayoutGrid, RotateCcw } from 'lucide-react'
 import { format, addDays, subDays, startOfWeek, isSameDay, parseISO, startOfDay, getDay } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
@@ -13,7 +13,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [activeKidId, setActiveKidId] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   
-  // 1. Detect Environment (PC vs Mobile)
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768)
@@ -29,7 +28,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     return defaultVal
   }
 
-  // 2. Data States
   const [tasks, setTasks] = useState([])
   const [logs, setLogs] = useState([])
   const [goals, setGoals] = useState([])
@@ -39,7 +37,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [showLogs, setShowLogs] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
-  const [showPalette, setShowPalette] = useState(false) // Toggle for mobile only
+  const [showPalette, setShowPalette] = useState(false) 
   
   const [newGoal, setNewGoal] = useState('')
   const [newWish, setNewWish] = useState('')
@@ -55,7 +53,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // 3. Persistent Kid Selection
   useEffect(() => {
     if (!user?.id) return
     const saved = loadState(`activeKid_${user.id}`, user.role === 'child' ? user.id : '')
@@ -75,7 +72,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     }
   }, [activeKidId, user?.id])
 
-  // 4. Data Sync Logic
   useEffect(() => {
     if (!activeKidId) return
     if (!isCloud) {
@@ -84,7 +80,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       setWishes(loadState(`wishes_${activeKidId}`, []))
       return
     }
-
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
     return onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
@@ -194,90 +189,78 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e) => { const d = e.active.data.current; if(d?.type==='palette') setActiveDragItem({type:'palette', subject:d.subject}); else if(d?.type==='task') setActiveDragItem({type:'task', task:d.task}); }} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
-      <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '10px' : '20px' }}>
+      <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         
-        {/* PC Header */}
-        {!isMobile && (
-          <header className="glass" style={{ padding: '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <div style={{ background: 'var(--primary)', color: 'white', padding: '12px', borderRadius: '18px' }}><Star size={28} /></div>
+        {/* Header Section */}
+        <header className="glass" style={{ padding: isMobile ? '12px 15px' : '20px 30px', borderRadius: 'var(--radius-lg)', marginBottom: '12px', background: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
+              <div style={{ background: 'var(--primary)', color: 'white', padding: isMobile ? '8px' : '12px', borderRadius: isMobile ? '12px' : '18px' }}><Star size={isMobile ? 20 : 28} /></div>
               <div>
-                <h1 style={{ fontSize: '22px', fontWeight: '900', color: 'var(--text-main)' }}>{allUsers[activeKidId]?.displayName || activeKidId}의 하루</h1>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
+                <h1 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '900', color: 'var(--text-main)' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
+                {!isMobile && <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {isAdmin && (
-                <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '5px', borderRadius: '14px', marginRight: '10px' }}>
-                  {kidsList.map(id => (
-                    <button key={id} onClick={() => setActiveKidId(id)} style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '800', cursor: 'pointer', boxShadow: activeKidId === id ? '0 4px 8px rgba(0,0,0,0.1)' : 'none', color: activeKidId === id ? 'var(--primary)' : 'var(--text-muted)' }}>{allUsers[id]?.displayName || id}</button>
-                  ))}
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '12px' }}>
+              {!isMobile && isAdmin && (
+                <button onClick={() => setShowClassManager(!showClassManager)} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '800', marginRight: '10px' }}><LayoutGrid size={20}/> 수업 관리</button>
               )}
-              <button onClick={() => setShowClassManager(!showClassManager)} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '800' }}><LayoutGrid size={20}/> 수업 관리</button>
-              <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={22}/></button>
-              <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}><Settings size={22} /></button>
-              <button onClick={onLogout} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={22} /></button>
+              <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); }} style={{ background: 'none', border: 'none', padding: '10px', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={isMobile ? 22 : 24}/></button>
+              <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); }} style={{ background: 'none', border: 'none', padding: '10px', cursor: 'pointer' }}><Settings size={isMobile ? 22 : 24} /></button>
+              <button onClick={onLogout} style={{ background: 'none', border: 'none', padding: '10px', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={isMobile ? 22 : 24} /></button>
             </div>
-          </header>
-        )}
-
-        {/* Mobile Header */}
-        {isMobile && (
-          <header className="glass" style={{ padding: '12px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ background: 'var(--primary)', color: 'white', padding: '6px', borderRadius: '10px' }}><Star size={18} /></div>
-                <h1 style={{ fontSize: '15px', fontWeight: '800' }}>{allUsers[activeKidId]?.displayName || activeKidId}</h1>
-              </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); }} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--primary)' }}><Trophy size={18}/></button>
-                <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'none', border: 'none', padding: '8px' }}><Settings size={18} /></button>
-                <button onClick={onLogout} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--secondary)' }}><LogOut size={18} /></button>
-              </div>
+          </div>
+          
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              {kidsList.map(id => (
+                <button key={id} onClick={() => setActiveKidId(id)} style={{ flex: isMobile ? 1 : 'none', padding: isMobile ? '8px 12px' : '10px 20px', borderRadius: '10px', border: 'none', background: activeKidId === id ? 'var(--primary)' : 'rgba(0,0,0,0.05)', fontWeight: '800', cursor: 'pointer', color: activeKidId === id ? 'white' : 'var(--text-muted)', fontSize: isMobile ? '13px' : '14px', transition: 'all 0.2s' }}>{allUsers[id]?.displayName || id}</button>
+              ))}
             </div>
-            {isAdmin && (
-              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '3px', borderRadius: '10px', width: 'fit-content' }}>
-                {kidsList.map(id => (
-                  <button key={id} onClick={() => setActiveKidId(id)} style={{ padding: '6px 15px', borderRadius: '8px', border: 'none', background: activeKidId === id ? 'white' : 'transparent', fontWeight: '800', fontSize: '12px', boxShadow: activeKidId === id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{allUsers[id]?.displayName || id}</button>
-                ))}
-              </div>
-            )}
-          </header>
-        )}
+          )}
+        </header>
 
-        {/* Date Navigation (Common but Centered) */}
-        <div className="dashboard-date-nav" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px' }}>
-             <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '50%', padding: '10px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronLeft size={20}/></button>
-             <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', minWidth: '130px', textAlign: 'center' }}>
+        {/* Date Navigation */}
+        <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', padding: isMobile ? '12px' : '20px', marginBottom: '12px', boxShadow: 'var(--shadow)' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: isMobile ? '12px' : '18px' }}>
+             <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'rgba(0,0,0,0.03)', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
+             <div style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: '900', color: 'var(--text-main)', textAlign: 'center' }}>
                {format(selectedDate, 'yyyy년 MM월')}
              </div>
-             <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '50%', padding: '10px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronRight size={20}/></button>
+             <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ background: 'rgba(0,0,0,0.03)', border: 'none', borderRadius: '50%', padding: '8px', cursor: 'pointer' }}><ChevronRight size={20}/></button>
           </div>
-          <div className="dashboard-week-strip" style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', scrollbarWidth: 'none', justifyContent: isMobile ? 'flex-start' : 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '2px 0', scrollbarWidth: 'none', justifyContent: isMobile ? 'flex-start' : 'center' }}>
             {weekDays.map(day => (
-              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '10px 0', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: isMobile ? '45px' : '65px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ flex: 1, padding: isMobile ? '8px 0' : '12px 0', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'rgba(0,0,0,0.03)', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', minWidth: isMobile ? '44px' : '65px', display: 'flex', flexDirection: 'column', alignItems: 'center', transition: 'all 0.2s' }}>
                 <span style={{ fontSize: '10px', opacity: 0.8, marginBottom: '2px' }}>{format(day, 'eee', { locale: ko })}</span>
-                <span style={{ fontSize: '14px' }}>{format(day, 'd')}</span>
+                <span style={{ fontSize: isMobile ? '14px' : '16px' }}>{format(day, 'd')}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="dashboard-toolbar" style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-           <button onClick={copyToTomorrow} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: '800', boxShadow: 'var(--shadow)' }}><Copy size={16}/> 내일복사</button>
-           <button onClick={resetDay} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13px', fontWeight: '800', color: '#ef4444', boxShadow: 'var(--shadow)' }}><Trash2 size={16}/> 초기화</button>
-           {isAdmin && isMobile && (
-             <button onClick={() => setShowPalette(!showPalette)} style={{ padding: '12px', borderRadius: '15px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', cursor: 'pointer', fontWeight: '800', boxShadow: 'var(--shadow)', display: 'flex' }}>
-               <Plus size={20} style={{ transform: showPalette ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
-             </button>
+        {/* Action Toolbar (Mobile Optimized) */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+           {isMobile ? (
+             <>
+               <button onClick={copyToTomorrow} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '13px', fontWeight: '800', boxShadow: 'var(--shadow)' }}><Copy size={16}/> 내일복사</button>
+               <button onClick={resetDay} style={{ flex: 1, padding: '12px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '13px', fontWeight: '800', color: '#ef4444', boxShadow: 'var(--shadow)' }}><RotateCcw size={16}/> 초기화</button>
+               {isAdmin && (
+                 <button onClick={() => setShowPalette(!showPalette)} style={{ width: '50px', borderRadius: '15px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                   <Plus size={22} style={{ transform: showPalette ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+                 </button>
+               )}
+             </>
+           ) : (
+             <>
+               <button onClick={copyToTomorrow} style={{ flex: 1, padding: '14px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '14px', fontWeight: '800', boxShadow: 'var(--shadow)' }}><Copy size={18}/> 내일 계획 그대로 복사하기</button>
+               <button onClick={resetDay} style={{ flex: 1, padding: '14px', borderRadius: '15px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '14px', fontWeight: '800', color: '#ef4444', boxShadow: 'var(--shadow)' }}><Trash2 size={18}/> 오늘 계획 초기화</button>
+             </>
            )}
         </div>
 
-        {/* Main Content (PC=Grid, Mobile=Stack) */}
-        <div className={isMobile ? "dashboard-main-stack" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? '15px' : '30px' }}>
+        {/* Main Content */}
+        <div className={isMobile ? "dashboard-main-stack" : "dashboard-main-grid"} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? '12px' : '30px' }}>
           
           <aside className="dashboard-sidebar" style={{ display: isMobile && !showPalette ? 'none' : 'flex', flexDirection: 'column', gap: '20px' }}>
              <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}>
