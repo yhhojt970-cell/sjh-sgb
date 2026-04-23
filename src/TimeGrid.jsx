@@ -43,7 +43,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin }) {
       }}>
         {hour < 10 ? `0${hour}` : hour}:00
       </div>
-      <div style={{ flex: 1, padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
+      <div className="time-slot-body" style={{ flex: 1, padding: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map(task => (
           <TaskCard 
             key={task.id} 
@@ -125,7 +125,8 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
       borderRadius: 'var(--radius-md)',
       background: isFixed ? 'rgba(139, 92, 246, 0.08)' : 'white',
       borderLeft: `6px solid ${task.color}`,
-      minWidth: '280px',
+      minWidth: 'min(280px, 100%)',
+      width: '100%',
       boxShadow: 'var(--shadow)',
       position: 'relative',
       opacity: isDragging ? 0.35 : task.completed ? 0.7 : 1,
@@ -272,8 +273,8 @@ function TaskCard({ task, onUpdate, onDelete, isAdmin }) {
 
 function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
   return (
-    <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
-      <div style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
+    <div className="glass time-grid-shell" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', background: 'white' }}>
+      <div className="time-grid-header" style={{ padding: '20px', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-gradient)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Clock size={20} style={{ color: 'var(--primary)' }} />
         </div>
@@ -283,7 +284,7 @@ function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin }) {
           </div>
         )}
       </div>
-      <div style={{ maxHeight: '700px', overflowY: 'auto' }}>
+      <div className="time-grid-scroll" style={{ maxHeight: '700px', overflowY: 'auto' }}>
         {HOURS.map(hour => (
           <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} />
         ))}

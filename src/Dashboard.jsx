@@ -550,18 +550,18 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
-        <header className="glass" style={{ padding: '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+      <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+        <header className="glass dashboard-header" style={{ padding: '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
+          <div className="dashboard-title-group" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '15px' }}><Star size={24} /></div>
             <div>
               <h1 style={{ fontSize: '18px', fontWeight: '800' }}>{activeKidId}의 {isAdmin ? '스케줄 관리' : '행복한 하루'}</h1>
               <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div className="dashboard-header-actions" style={{ display: 'flex', gap: '10px' }}>
             {isAdmin && (
-              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '12px' }}>
+              <div className="dashboard-kid-switcher" style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '12px' }}>
                 {kids.map(kid => (<button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '600', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{allUsers[kid]?.displayName || kid}</button>))}
               </div>
             )}
@@ -578,25 +578,25 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
           </div>
         </header>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-           <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="dashboard-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+           <div className="dashboard-toolbar-actions" style={{ display: 'flex', gap: '10px' }}>
               <button onClick={copyToTomorrow} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700' }}><Copy size={16}/> 내일로 복사</button>
               <button onClick={resetDay} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#ef4444' }}><Trash2 size={16}/> 초기화</button>
            </div>
-           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', minWidth: '120px', textAlign: 'center' }}>
+           <div className="dashboard-date-nav" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div className="dashboard-date-title" style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', minWidth: '120px', textAlign: 'center' }}>
                 오늘의 시간표
               </div>
               <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="glass" style={{ padding: '8px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
-              <div style={{ display: 'flex', gap: '5px' }}>
+              <div className="dashboard-week-strip" style={{ display: 'flex', gap: '5px' }}>
                 {weekDays.map(day => (<button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '10px 14px', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: '55px' }}><div style={{ fontSize: '10px', opacity: 0.8 }}>{format(day, 'eee', { locale: ko })}</div><div>{format(day, 'd')}</div></button>))}
               </div>
               <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="glass" style={{ padding: '8px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}><ChevronRight size={20}/></button>
            </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '30px' }}>
-          <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div className="dashboard-main-grid" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '30px' }}>
+          <aside className="dashboard-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} /></div>
             <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}><Gift size={20} style={{ color: 'var(--secondary)' }} /><h3 style={{ fontSize: '16px', fontWeight: '700' }}>나의 소원 리스트</h3></div>
@@ -613,7 +613,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
             </div>
           </aside>
 
-          <main>
+          <main className="dashboard-main">
             {showClassManager && isAdmin ? (
               <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>

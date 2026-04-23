@@ -351,3 +351,130 @@ body{
     font-size: 38px;
   }
 }
+
+@media (max-width: 768px){
+  .dashboard-shell{
+    padding: 12px !important;
+  }
+
+  .dashboard-header{
+    padding: 14px !important;
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+
+  .dashboard-title-group{
+    align-items: flex-start !important;
+  }
+
+  .dashboard-header-actions{
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .dashboard-header-actions > button,
+  .dashboard-header-actions > div{
+    flex: 1 1 auto;
+  }
+
+  .dashboard-kid-switcher{
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .dashboard-kid-switcher button{
+    white-space: nowrap;
+  }
+
+  .dashboard-toolbar{
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+
+  .dashboard-toolbar-actions{
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px !important;
+  }
+
+  .dashboard-toolbar-actions button{
+    justify-content: center;
+  }
+
+  .dashboard-date-nav{
+    gap: 8px !important;
+    display: grid !important;
+    grid-template-columns: 36px 1fr 36px;
+    align-items: center;
+  }
+
+  .dashboard-date-title{
+    grid-column: 1 / -1;
+    min-width: 0 !important;
+    text-align: left !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-week-strip{
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .dashboard-week-strip::-webkit-scrollbar{
+    display: none;
+  }
+
+  .dashboard-main-grid{
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .dashboard-sidebar,
+  .dashboard-main{
+    min-width: 0;
+  }
+
+  .time-grid-header{
+    padding: 14px !important;
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 8px;
+  }
+
+  .time-grid-scroll{
+    max-height: none !important;
+  }
+
+  .time-slot-body{
+    padding: 8px !important;
+  }
+
+  .icon-add-button{
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
+@media (max-width: 520px){
+  .dashboard-toolbar-actions{
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header-actions{
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-header-actions > button,
+  .dashboard-header-actions > div{
+    width: 100%;
+  }
+
+  .dashboard-header-actions button{
+    justify-content: center;
+  }
+}
