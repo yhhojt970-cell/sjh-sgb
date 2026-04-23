@@ -29,6 +29,7 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
   const [showLogs, setShowLogs] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   
   const [newGoal, setNewGoal] = useState('')
   const [newWish, setNewWish] = useState('')
@@ -107,7 +108,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     })
   }, [isCloud, cloud?.db, cloud?.householdId])
 
-  // If `user` is loaded async, initialize activeKidId from user/localStorage so saving works.
   useEffect(() => {
     if (!user?.id) return
     const saved = loadState(`activeKid_${user.id}`, user.id)
@@ -216,77 +216,55 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   const renderDragPreview = () => {
     if (!activeDragItem) return null
-
     if (activeDragItem.type === 'palette') {
       const subject = activeDragItem.subject
       return (
         <div className="drag-preview-card" style={{ borderLeft: `6px solid ${subject.color}` }}>
           <div className="drag-preview-badge">끌어다 놓기</div>
           <div className="drag-preview-title">{subject.name}</div>
-          <div className="drag-preview-time">원하는 시간 칸 위에 놓으면 추가돼요</div>
         </div>
       )
     }
-
     if (activeDragItem.type === 'task') {
       const task = activeDragItem.task
       return (
         <div className="drag-preview-card" style={{ borderLeft: `6px solid ${task.color}` }}>
-          <div className="drag-preview-badge">시간표 이동</div>
           <div className="drag-preview-title">{task.name}</div>
-          <div className="drag-preview-time">{task.startTime} · 다른 시간 칸으로 옮길 수 있어요</div>
         </div>
       )
     }
-
     return null
   }
 
   const handleDragStart = (event) => {
     const dragData = event.active?.data?.current
     if (!dragData) return
-
-    if (dragData.type === 'palette') {
-      setActiveDragItem({ type: 'palette', subject: dragData.subject })
-    } else if (dragData.type === 'task') {
-      setActiveDragItem({ type: 'task', task: dragData.task })
-    }
+    if (dragData.type === 'palette') setActiveDragItem({ type: 'palette', subject: dragData.subject })
+    else if (dragData.type === 'task') setActiveDragItem({ type: 'task', task: dragData.task })
   }
 
   const handleDragEnd = (event) => {
     const { active, over } = event
     const dragData = active?.data?.current
-
     if (over?.id?.toString().startsWith('hour-') && dragData?.type === 'palette') {
-      const subject = dragData.subject
-      if (!subject) {
-        setActiveDragItem(null)
-        return
-      }
       const hour = over.data.current.hour
       const startTime = typeof hour === 'number' ? `${hour.toString().padStart(2, '0')}:00` : hour
-      addTask(subject.name, subject.color, startTime, 50, 'study')
+      addTask(dragData.subject.name, dragData.subject.color, startTime, 50, 'study')
     } else if (over?.id?.toString().startsWith('hour-') && dragData?.type === 'task') {
       const hour = over.data.current.hour
       const startTime = typeof hour === 'number' ? `${hour.toString().padStart(2, '0')}:00` : hour
       updateTask(dragData.task.id, { startTime })
     }
-
     setActiveDragItem(null)
   }
 
   const addTask = (name, color, startTime, duration, type, icon = 'Book', targetKidId = activeKidId, targetDate = format(selectedDate, 'yyyy-MM-dd'), extra = {}) => {
-    const safeStartTime =
-      typeof startTime === 'string' && startTime.includes(':')
-        ? startTime
-        : `${String(startTime).padStart(2, '0')}:00`
-
+    const safeStartTime = typeof startTime === 'string' && startTime.includes(':') ? startTime : `${String(startTime).padStart(2, '0')}:00`
     const [hour, min] = safeStartTime.split(':').map(Number)
     const totalMinutes = hour * 60 + min + duration
     const endH = Math.floor(totalMinutes / 60) % 24
     const endM = totalMinutes % 60
     const expectedEndTime = `${endH < 10 ? '0' + endH : endH}:${endM < 10 ? '0' + endM : endM}`
-
     const newTask = {
       id: Math.random().toString(36).substr(2, 9),
       name, color, startTime: safeStartTime, expectedEndTime, duration, type, icon,
@@ -295,39 +273,15 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
       ...(type === 'class' ? { weekday: extra.weekday ?? getDay(parseISO(targetDate)) } : {}),
       ...extra
     }
-
-    if (targetKidId === activeKidId && targetDate === format(selectedDate, 'yyyy-MM-dd')) {
-      applyTaskChange(prev => [...(prev || []), newTask])
-    } else {
-      if (!isCloud) {
-        // Update specific kid's localStorage for the specific date
-        const key = `tasks_${targetKidId}`
-        const existing = loadState(key, [])
-        localStorage.setItem(key, JSON.stringify([...existing, newTask]))
-      } else if (targetKidId !== activeKidId) {
+    if (targetKidId === activeKidId && targetDate === format(selectedDate, 'yyyy-MM-dd')) applyTaskChange(prev => [...(prev || []), newTask])
+    else if (isCloud) {
         ;(async () => {
           try {
             const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', targetKidId)
-            await setDoc(
-              ref,
-              {
-                tasks: arrayUnion(newTask),
-                updatedAt: serverTimestamp()
-              },
-              { merge: true }
-            )
-          } catch (e) {
-            console.error(e)
-          }
+            await setDoc(ref, { tasks: arrayUnion(newTask), updatedAt: serverTimestamp() }, { merge: true })
+          } catch (e) { console.error(e) }
         })()
-      }
-
-      // If we are currently viewing the same kid but different date, keep UI state in sync.
-      if (targetKidId === activeKidId) {
-        applyTaskChange(prev => [...(prev || []), newTask])
-      }
-    }
-    
+    } else if (targetKidId === activeKidId) applyTaskChange(prev => [...(prev || []), newTask])
     addLog(type === 'class' ? '고정 수업 추가' : '공부 계획 추가', `${targetDate} [${targetKidId}] ${name}`)
   }
 
@@ -335,76 +289,30 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     if (!bulkInput) return
     const lines = bulkInput.trim().split('\n')
     let count = 0
-    
     const dayMap = { '월': 0, '화': 1, '수': 2, '목': 3, '금': 4, '토': 5, '일': 6 }
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 })
-    const isDateStr = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '')
-
     lines.forEach(line => {
-      // Split by tab or multiple spaces
       const parts = line.split(/[\t]+| {2,}/).map(s => s.trim()).filter(Boolean)
-      
       if (parts.length >= 5) {
         const [kidName, dayName, subject, time, duration, ...rest] = parts
-        const dayIdx = dayMap[dayName[0]] // Take first char just in case of '월요일'
-        
+        const dayIdx = dayMap[dayName[0]]
         if (dayIdx !== undefined) {
            const targetDate = format(addDays(weekStart, dayIdx), 'yyyy-MM-dd')
-           const kidId =
-             Object.keys(allUsers || {}).find((key) => {
-               const info = allUsers[key] || {}
-               return (
-                 key.includes(kidName) ||
-                 kidName.includes(key) ||
-                 (info.displayName && info.displayName.includes(kidName)) ||
-                 (info.displayName && kidName.includes(info.displayName))
-               )
-             }) || kidName
-
-           let notes = ''
-           let startDate = ''
-           let endDate = ''
-
-           if (rest.length > 0) {
-             notes = rest[0] || ''
-
-             if (rest.length > 1) {
-               if (isDateStr(rest[1])) startDate = rest[1]
-               else notes = `${notes} ${rest[1]}`.trim()
-             }
-
-             if (rest.length > 2) {
-               if (isDateStr(rest[2])) endDate = rest[2]
-               else notes = `${notes} ${rest[2]}`.trim()
-             }
-
-             if (rest.length > 3) {
-               notes = `${notes} ${rest.slice(3).join(' ')}`.trim()
-             }
-           }
-
-           const extra = {}
-           if (notes) extra.notes = notes
-           if (startDate) extra.startDate = startDate
-           if (endDate) extra.endDate = endDate
-           extra.weekday = getDay(parseISO(targetDate))
-
+           const kidId = Object.keys(allUsers || {}).find(key => {
+             const info = allUsers[key] || {}
+             return key.includes(kidName) || (info.displayName && info.displayName.includes(kidName))
+           }) || kidName
+           const extra = { weekday: getDay(parseISO(targetDate)) }
+           if (rest[0]) extra.notes = rest[0]
            addTask(subject, '#8b5cf6', time, parseInt(duration) || 50, 'class', 'Book', kidId, targetDate, extra)
            count++
         }
       }
     })
-    
     if (count > 0) {
       alert(`${count}개의 수업이 등록되었습니다!`)
       setBulkInput('')
       setShowClassManager(false)
-      // In cloud mode the Firestore listener will refresh tasks; local mode still reads from storage.
-      if (!isCloud) {
-        setTasks(loadState(`tasks_${activeKidId}`, []))
-      }
-    } else {
-      alert('올바른 형식이 아닙니다. [이름 요일 과목 시간 분 (메모) (시작일) (종료일)] 순서로 입력해 주세요.')
     }
   }
 
@@ -412,8 +320,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     applyTaskChange(prev => (prev || []).map(t => {
       if (t.id === taskId) {
         const newT = { ...t, ...updates }
-        
-        // Recalculate end time if start time or duration changed
         if (updates.startTime !== undefined || updates.duration !== undefined) {
            const [h, m] = newT.startTime.split(':').map(Number)
            const totalMinutes = h * 60 + m + (newT.duration || 0)
@@ -421,13 +327,6 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
            const endM = totalMinutes % 60
            newT.expectedEndTime = `${endH < 10 ? '0' + endH : endH}:${endM < 10 ? '0' + endM : endM}`
         }
-
-        if (t.type === 'class') {
-           addLog('고정 수업 수정', `${t.name} -> ${newT.name} (${newT.startTime})`)
-        } else if (updates.completed !== undefined) {
-           addLog(updates.completed ? '달성 완료' : '달성 취소', `${t.name}`)
-        }
-        
         return newT
       }
       return t
@@ -446,98 +345,39 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
     const todayStr = format(selectedDate, 'yyyy-MM-dd')
     const tomorrowStr = format(addDays(selectedDate, 1), 'yyyy-MM-dd')
     const todayTasks = (tasks || []).filter(t => t.date === todayStr && t.type !== 'class')
-    
     if (todayTasks.length === 0) return alert('오늘 계획이 없어요!')
-    
-    const newTasks = todayTasks.map(t => ({
-      ...t,
-      id: Math.random().toString(36).substr(2, 9),
-      date: tomorrowStr,
-      completed: false,
-      actualStartTime: null,
-      actualEndTime: null
-    }))
-    
+    const newTasks = todayTasks.map(t => ({ ...t, id: Math.random().toString(36).substr(2, 9), date: tomorrowStr, completed: false }))
     applyTaskChange(prev => [...(prev || []), ...newTasks])
     alert(`${tomorrowStr}로 계획이 복사되었습니다!`)
-    addLog('계획 복사', `${todayStr} -> ${tomorrowStr}`)
   }
 
   const resetDay = () => {
     if (confirm('오늘의 모든 계획을 삭제하고 초기화할까요?')) {
       const todayStr = format(selectedDate, 'yyyy-MM-dd')
-      applyTaskChange(prev => (prev || []).filter(t => {
-        if (t.type === 'class') return true
-        return t.date !== todayStr
-      }))
-      addLog('초기화', `${todayStr} 시간표 초기화`)
-    }
-  }
-
-  const copyGroupCode = async () => {
-    if (!isCloud) return
-    try {
-      await navigator.clipboard.writeText(cloud.householdId)
-      alert(`그룹 코드가 복사됐어요: ${cloud.householdId}`)
-    } catch (e) {
-      alert('그룹 코드 복사에 실패했어요.')
+      applyTaskChange(prev => (prev || []).filter(t => t.type === 'class' || t.date !== todayStr))
     }
   }
 
   const submitPasswordChange = async () => {
-    if (!onChangePassword) return
-    if (!currentPassword || !nextPassword || !confirmPassword) {
-      setPasswordMessage('세 칸을 모두 입력해 주세요.')
-      return
-    }
-    if (nextPassword.length < 6) {
-      setPasswordMessage('새 비밀번호는 6자 이상으로 해 주세요.')
-      return
-    }
-    if (nextPassword !== confirmPassword) {
-      setPasswordMessage('새 비밀번호 확인이 맞지 않아요.')
-      return
-    }
-
+    if (!onChangePassword || !currentPassword || !nextPassword) return
     setPasswordBusy(true)
     const result = await onChangePassword(currentPassword, nextPassword)
     setPasswordBusy(false)
     setPasswordMessage(result.message)
-
-    if (result.ok) {
-      setCurrentPassword('')
-      setNextPassword('')
-      setConfirmPassword('')
-    }
+    if (result.ok) { setCurrentPassword(''); setNextPassword(''); setConfirmPassword(''); }
   }
 
   const currentTasks = useMemo(() => {
     try {
-      if (!selectedDate || !(selectedDate instanceof Date)) return []
       const dateStr = format(selectedDate, 'yyyy-MM-dd')
       const targetTime = startOfDay(selectedDate).getTime()
       const selectedWeekday = getDay(selectedDate)
-
       return (tasks || []).filter(t => {
-        const isRecurringClass = t.type === 'class'
-        const taskWeekday = t.weekday ?? (t.date ? getDay(parseISO(t.date)) : null)
-
-        if (isRecurringClass) {
-          if (taskWeekday !== selectedWeekday) return false
-        } else if (t.date !== dateStr) {
-          return false
-        }
-        
-        // Optional date range match
-        if (t.startDate) {
-          const start = startOfDay(parseISO(t.startDate)).getTime()
-          if (targetTime < start) return false
-        }
-        if (t.endDate) {
-          const end = startOfDay(parseISO(t.endDate)).getTime()
-          if (targetTime > end) return false
-        }
-        
+        if (t.type === 'class') {
+          if (t.weekday !== selectedWeekday) return false
+        } else if (t.date !== dateStr) return false
+        if (t.startDate && targetTime < startOfDay(parseISO(t.startDate)).getTime()) return false
+        if (t.endDate && targetTime > startOfDay(parseISO(t.endDate)).getTime()) return false
         return true
       })
     } catch (e) { return [] }
@@ -550,188 +390,98 @@ function Dashboard({ user, onLogout, onUpdateUser, onChangePassword, allUsers, c
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragItem(null)}>
-      <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
-        <header className="glass dashboard-header" style={{ padding: '16px 24px', borderRadius: 'var(--radius-lg)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white' }}>
-          <div className="dashboard-title-group" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div style={{ background: 'var(--primary)', color: 'white', padding: '10px', borderRadius: '15px' }}><Star size={24} /></div>
-            <div>
-              <h1 style={{ fontSize: '18px', fontWeight: '800' }}>{activeKidId}의 {isAdmin ? '스케줄 관리' : '행복한 하루'}</h1>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{format(selectedDate, 'yyyy년 MM월 dd일 (eeee)', { locale: ko })}</p>
+      <div className="dashboard-shell" style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px' }}>
+        <header className="glass dashboard-header" style={{ padding: '12px', borderRadius: 'var(--radius-lg)', marginBottom: '15px', background: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ background: 'var(--primary)', color: 'white', padding: '6px', borderRadius: '10px' }}><Star size={18} /></div>
+              <h1 style={{ fontSize: '15px', fontWeight: '800' }}>{allUsers[activeKidId]?.displayName || activeKidId}의 하루</h1>
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); setShowClassManager(false); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={18}/></button>
+              {isAdmin && <button onClick={() => { setShowLogs(!showLogs); setShowGoals(false); setShowSettings(false); setShowClassManager(false); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--accent)' }}><ClipboardList size={18}/></button>}
+              <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); setShowClassManager(false); setPasswordMessage(''); }} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}><Settings size={18} /></button>
+              <button onClick={onLogout} style={{ background: 'none', border: 'none', padding: '8px', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={18} /></button>
             </div>
           </div>
-          <div className="dashboard-header-actions" style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
             {isAdmin && (
-              <div className="dashboard-kid-switcher" style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '12px' }}>
-                {kids.map(kid => (<button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '600', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>{allUsers[kid]?.displayName || kid}</button>))}
+              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.05)', padding: '3px', borderRadius: '10px' }}>
+                {kids.map(kid => (
+                  <button key={kid} onClick={() => setActiveKidId(kid)} style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', background: activeKidId === kid ? 'white' : 'transparent', fontWeight: '700', fontSize: '12px', cursor: 'pointer', boxShadow: activeKidId === kid ? '0 2px 4px rgba(0,0,0,0.1)' : 'none' }}>
+                    {allUsers[kid]?.displayName || kid}
+                  </button>
+                ))}
               </div>
             )}
-            {isCloud && isAdmin && (
-              <button onClick={copyGroupCode} className="glass" style={{ padding: '10px 14px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--text-main)', fontWeight: '800', fontSize: '12px' }}>
-                그룹: {cloud.householdId}
+            {isAdmin && (
+              <button onClick={() => setShowClassManager(!showClassManager)} style={{ padding: '6px 10px', borderRadius: '10px', border: 'none', background: 'rgba(139, 92, 246, 0.1)', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <LayoutGrid size={14}/> 수업관리
               </button>
             )}
-            {isAdmin && <button onClick={() => setShowClassManager(!showClassManager)} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '5px' }}><LayoutGrid size={20}/> <span style={{fontSize: '13px', fontWeight: '700'}}>수업 관리</span></button>}
-            <button onClick={() => { setShowGoals(!showGoals); setShowLogs(false); setShowSettings(false); setShowClassManager(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}><Trophy size={20}/></button>
-            {isAdmin && <button onClick={() => { setShowLogs(!showLogs); setShowGoals(false); setShowSettings(false); setShowClassManager(false); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}><ClipboardList size={20}/></button>}
-            <button onClick={() => { setShowSettings(!showSettings); setShowLogs(false); setShowGoals(false); setShowClassManager(false); setPasswordMessage(''); }} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}><Settings size={20} /></button>
-            <button onClick={onLogout} className="glass" style={{ padding: '10px', borderRadius: '12px', border: 'none', cursor: 'pointer', color: 'var(--secondary)' }}><LogOut size={20} /></button>
           </div>
         </header>
 
-        <div className="dashboard-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-           <div className="dashboard-toolbar-actions" style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={copyToTomorrow} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700' }}><Copy size={16}/> 내일로 복사</button>
-              <button onClick={resetDay} className="glass" style={{ padding: '10px 18px', borderRadius: '12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '700', color: '#ef4444' }}><Trash2 size={16}/> 초기화</button>
-           </div>
-           <div className="dashboard-date-nav" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <div className="dashboard-date-title" style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)', minWidth: '120px', textAlign: 'center' }}>
-                오늘의 시간표
-              </div>
-              <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="glass" style={{ padding: '8px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}><ChevronLeft size={20}/></button>
-              <div className="dashboard-week-strip" style={{ display: 'flex', gap: '5px' }}>
-                {weekDays.map(day => (<button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '10px 14px', borderRadius: '12px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: '55px' }}><div style={{ fontSize: '10px', opacity: 0.8 }}>{format(day, 'eee', { locale: ko })}</div><div>{format(day, 'd')}</div></button>))}
-              </div>
-              <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="glass" style={{ padding: '8px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}><ChevronRight size={20}/></button>
-           </div>
+        <div className="dashboard-date-nav" style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '15px' }}>
+          <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronLeft size={20}/></button>
+          <div className="dashboard-week-strip" style={{ display: 'flex', gap: '4px', overflowX: 'auto', flex: 1, padding: '2px 0', scrollbarWidth: 'none' }}>
+            {weekDays.map(day => (
+              <button key={day.toString()} onClick={() => setSelectedDate(day)} style={{ padding: '8px 0', borderRadius: '10px', border: 'none', background: isSameDay(day, selectedDate) ? 'var(--primary)' : 'white', color: isSameDay(day, selectedDate) ? 'white' : 'var(--text-main)', fontWeight: '700', cursor: 'pointer', boxShadow: 'var(--shadow)', minWidth: '42px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span style={{ fontSize: '9px', opacity: 0.8, marginBottom: '2px' }}>{format(day, 'eee', { locale: ko })}</span>
+                <span style={{ fontSize: '13px' }}>{format(day, 'd')}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ background: 'white', border: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer', boxShadow: 'var(--shadow)', display: 'flex' }}><ChevronRight size={20}/></button>
         </div>
 
-        <div className="dashboard-main-grid" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '30px' }}>
-          <aside className="dashboard-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}><SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kids} /></div>
-            <div className="glass" style={{ borderRadius: 'var(--radius-lg)', background: 'white', padding: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}><Gift size={20} style={{ color: 'var(--secondary)' }} /><h3 style={{ fontSize: '16px', fontWeight: '700' }}>나의 소원 리스트</h3></div>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}><input className="input-field" style={{ padding: '8px', fontSize: '13px' }} placeholder="이루고 싶은 소원" value={newWish} onChange={(e) => setNewWish(e.target.value)} /><button onClick={() => { if(newWish){ applyWishesChange(prev => [...(prev || []), {id: Date.now(), text: newWish, granted: false}]); setNewWish(''); } }} className="icon-add-button" style={{ background: 'var(--secondary)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer' }}><Plus size={16}/></button></div>
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {(wishes || []).map(w => (
-                  <li key={w.id} style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,0.02)', padding: '8px', borderRadius: '8px' }}>
-                    {w.granted ? <CheckCircle2 size={14} color="var(--accent)"/> : <Star size={14} color="#ddd"/>}
-                    <span style={{ textDecoration: w.granted ? 'line-through' : 'none', opacity: w.granted ? 0.5 : 1 }}>{w.text}</span>
-                    {isAdmin && !w.granted && <button onClick={() => applyWishesChange(prev => (prev || []).map(i => i.id === w.id ? {...i, granted: true} : i))} style={{ marginLeft: 'auto', fontSize: '10px', background: 'var(--accent)', color: 'white', border: 'none', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}>승인</button>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
+        <div className="dashboard-toolbar" style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+           <button onClick={copyToTomorrow} style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', boxShadow: 'var(--shadow)' }}><Copy size={14}/> 내일복사</button>
+           <button onClick={resetDay} style={{ flex: 1, padding: '10px', borderRadius: '12px', border: 'none', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', fontWeight: '700', color: '#ef4444', boxShadow: 'var(--shadow)' }}><Trash2 size={14}/> 초기화</button>
+           {isAdmin && (
+             <button onClick={() => setShowPalette(!showPalette)} style={{ padding: '10px', borderRadius: '12px', border: 'none', background: showPalette ? 'var(--primary)' : 'white', color: showPalette ? 'white' : 'var(--primary)', cursor: 'pointer', fontWeight: '700', boxShadow: 'var(--shadow)', display: 'flex' }}>
+               <Plus size={18} style={{ transform: showPalette ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
+             </button>
+           )}
+        </div>
 
+        <div className="dashboard-main-stack" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {showPalette && isAdmin && (
+            <div className="glass animate-fade-in" style={{ borderRadius: 'var(--radius-lg)', background: 'white' }}>
+              <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kids} />
+            </div>
+          )}
           <main className="dashboard-main">
             {showClassManager && isAdmin ? (
-              <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--primary)' }}>🛠️ 수업 일괄 등록 (엄마 전용)</h2>
-                    <button onClick={() => setShowClassManager(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Plus size={20} style={{ transform: 'rotate(45deg)' }}/></button>
-                 </div>
-                 
-                 <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(139, 92, 246, 0.05)', borderRadius: '12px' }}>
-                    <p style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>1. 대상을 선택하세요</p>
-                    <div style={{ display: 'flex', gap: '15px' }}>
-                       {kids.map(kid => (
-                         <label key={kid} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px', cursor: 'pointer' }}>
-                           <input type="checkbox" checked={selectedKids.includes(kid)} onChange={(e) => {
-                             if (e.target.checked) setSelectedKids([...selectedKids, kid])
-                             else setSelectedKids(selectedKids.filter(k => k !== kid))
-                           }} /> {allUsers[kid]?.displayName || kid}
-                         </label>
-                       ))}
-                    </div>
-                 </div>
-
-                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '25px' }}>
-                    <div style={{ borderRight: '1px solid #eee', paddingRight: '20px' }}>
-                       <p style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>방법 A: 직접 입력하기</p>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          <input className="input-field" value={className} onChange={(e)=>setClassName(e.target.value)} placeholder="수업 이름"/>
-                          <div style={{ display: 'flex', gap: '10px' }}>
-                             <input type="time" className="input-field" value={classStartTime} onChange={(e)=>setClassStartTime(e.target.value)} />
-                             <input type="number" className="input-field" value={classDuration} onChange={(e)=>setClassDuration(Number(e.target.value))} placeholder="분"/>
-                          </div>
-                          <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700' }}>수업 기간 (선택)</label>
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                             <input type="date" className="input-field" style={{padding:'4px', fontSize:'11px'}} value={classStartDate} onChange={(e)=>setClassStartDate(e.target.value)} />
-                             <input type="date" className="input-field" style={{padding:'4px', fontSize:'11px'}} value={classEndDate} onChange={(e)=>setClassEndDate(e.target.value)} />
-                          </div>
-                          <textarea className="input-field" style={{padding:'8px', fontSize:'12px', height:'40px'}} value={classNotes} onChange={(e)=>setClassNotes(e.target.value)} placeholder="수업 메모 (줌 주소 등)"/>
-                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                             <select className="input-field" value={classIcon} onChange={(e)=>setClassIcon(e.target.value)}>
-                                {ICONS.map(i => <option key={i} value={i}>{i}</option>)}
-                             </select>
-                             <input type="color" className="input-field" style={{padding:'2px',height:'40px', width: '60px'}} value={classColor} onChange={(e)=>setClassColor(e.target.value)}/>
-                          </div>
-                          <button onClick={()=>{ if(className){ selectedKids.forEach(kid => addTask(className, classColor, classStartTime, classDuration, 'class', classIcon, kid, format(selectedDate, 'yyyy-MM-dd'), { notes: classNotes, startDate: classStartDate, endDate: classEndDate })); setClassName(''); setClassNotes(''); setClassStartDate(''); setClassEndDate(''); } }} className="btn-primary" style={{width:'100%'}}>등록하기</button>
-                       </div>
-                    </div>
-
-                    <div>
-                       <p style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>방법 B: 엑셀 일괄 등록 (추천 ⭐)</p>
-                       <textarea 
-                          className="input-field" 
-                          style={{ height: '120px', fontSize: '12px', fontFamily: 'monospace' }} 
-                          placeholder="이름 [Tab] 요일 [Tab] 과목명 [Tab] 시간 [Tab] 분 [Tab] (메모) [Tab] (시작일) [Tab] (종료일)&#10;예: 가빈\t월\t피아노\t14:00\t50\t줌: https://...\t2026-05-01\t2026-06-30&#10;    지희\t화\t영어학원\t15:30\t90"
-                          value={bulkInput}
-                          onChange={(e) => setBulkInput(e.target.value)}
-                       />
-                       <button onClick={handleBulkAdd} className="btn-primary" style={{ width: '100%', marginTop: '10px', background: 'var(--accent)' }}>스케줄 일괄 등록 실행</button>
-                    </div>
-                 </div>
-
-                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
-                    💡 기본 5개 열(이름, 요일, 과목, 시간, 분) + 선택 3개 열(메모, 시작일, 종료일)도 지원해요. 메모에 띄어쓰기가 있으면 Tab으로 구분해서 붙여넣어 주세요.
-                 </div>
-              </div>
+               <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}><h2 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>수업 일괄 등록</h2><button onClick={() => setShowClassManager(false)} style={{ background: 'none', border: 'none' }}><Plus size={20} style={{ transform: 'rotate(45deg)' }}/></button></div>
+                  <textarea className="input-field" style={{ height: '100px', fontSize: '12px' }} placeholder="이름 [Tab] 요일 [Tab] 과목명 [Tab] 시간 [Tab] 분" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)}/>
+                  <button onClick={handleBulkAdd} className="btn-primary" style={{ width: '100%', marginTop: '10px' }}>스케줄 등록</button>
+               </div>
             ) : showSettings ? (
-              <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '10px' }}>내 비밀번호 바꾸기</h2>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                  지금 로그인한 사람만 자기 비밀번호를 바꿀 수 있어요.
-                </p>
-
-                <div style={{ maxWidth: '460px', display: 'grid', gap: '12px' }}>
-                  <input
-                    className="input-field"
-                    type="password"
-                    placeholder="현재 비밀번호"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                  />
-                  <input
-                    className="input-field"
-                    type="password"
-                    placeholder="새 비밀번호"
-                    value={nextPassword}
-                    onChange={(e) => setNextPassword(e.target.value)}
-                  />
-                  <input
-                    className="input-field"
-                    type="password"
-                    placeholder="새 비밀번호 다시 입력"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                  {passwordMessage && (
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: passwordMessage.includes('바뀌었어요') ? 'var(--accent)' : '#ef4444' }}>
-                      {passwordMessage}
-                    </div>
-                  )}
-                  <button
-                    className="btn-primary"
-                    style={{ width: '220px', opacity: passwordBusy ? 0.7 : 1 }}
-                    disabled={passwordBusy}
-                    onClick={submitPasswordChange}
-                  >
-                    {passwordBusy ? '바꾸는 중...' : '비밀번호 변경하기'}
-                  </button>
-                </div>
-              </div>
+               <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
+                 <h2 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '15px' }}>비밀번호 변경</h2>
+                 <input className="input-field" type="password" placeholder="현재 비밀번호" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} style={{marginBottom:'10px'}}/>
+                 <input className="input-field" type="password" placeholder="새 비밀번호" value={nextPassword} onChange={(e) => setNextPassword(e.target.value)} style={{marginBottom:'10px'}}/>
+                 {passwordMessage && <div style={{ fontSize: '12px', color: 'var(--accent)', marginBottom: '10px' }}>{passwordMessage}</div>}
+                 <button className="btn-primary" onClick={submitPasswordChange}>변경하기</button>
+                 <button className="btn-secondary" onClick={()=>setShowSettings(false)} style={{marginTop:'10px', width:'100%'}}>닫기</button>
+               </div>
             ) : showLogs ? (
-              <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>활동 기록</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>{(logs || []).filter(l => l.kidId === activeKidId).map(log => (<div key={log.id} style={{ padding: '12px', borderBottom: '1px solid #eee', fontSize: '13px' }}><span style={{ color: 'var(--text-muted)', marginRight: '10px' }}>{log.timestamp ? format(new Date(log.timestamp), 'HH:mm:ss') : ''}</span><strong style={{ color: 'var(--primary)', marginRight: '10px' }}>{log.action}</strong><span>{log.detail}</span></div>))}</div>
-              </div>
+               <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
+                 <h2 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '15px' }}>활동 기록</h2>
+                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                   {(logs || []).filter(l => l.kidId === activeKidId).map(log => (<div key={log.id} style={{ padding: '8px 0', borderBottom: '1px solid #eee', fontSize: '12px' }}><strong>{log.action}</strong>: {log.detail}</div>))}
+                 </div>
+                 <button className="btn-secondary" onClick={()=>setShowLogs(false)} style={{marginTop:'10px', width:'100%'}}>닫기</button>
+               </div>
             ) : showGoals ? (
-              <div className="glass animate-fade-in" style={{ padding: '30px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '20px' }}>🎯 이번 주 목표</h2>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}><input className="input-field" placeholder="목표 입력" value={newGoal} onChange={(e) => setNewGoal(e.target.value)} /><button onClick={() => { if(newGoal){ applyGoalsChange(prev => [...(prev || []), {id: Date.now(), text: newGoal, done: false}]); setNewGoal(''); } }} className="btn-primary" style={{ minWidth: '74px' }}>추가</button></div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>{(goals || []).map(g => (<div key={g.id} onClick={() => applyGoalsChange(prev => (prev || []).map(i => i.id === g.id ? {...i, done: !i.done} : i))} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '15px', background: g.done ? 'rgba(52, 211, 153, 0.1)' : 'rgba(0,0,0,0.02)', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>{g.done ? <CheckCircle2 color="var(--accent)"/> : <div style={{ width: '24px', height: '24px', border: '2px solid #ddd', borderRadius: '50%' }}/>}<span style={{ fontWeight: '600', textDecoration: g.done ? 'line-through' : 'none' }}>{g.text}</span></div>))}</div>
-              </div>
+               <div className="glass animate-fade-in" style={{ padding: '20px', borderRadius: 'var(--radius-lg)', background: 'white' }}>
+                 <h2 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '15px' }}>이번 주 목표</h2>
+                 <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}><input className="input-field" value={newGoal} onChange={(e)=>setNewGoal(e.target.value)}/><button className="btn-primary" onClick={()=>{if(newGoal){applyGoalsChange(prev=>[...prev, {id:Date.now(), text:newGoal, done:false}]);setNewGoal('');}}}>+</button></div>
+                 {(goals || []).map(g => (<div key={g.id} onClick={()=>applyGoalsChange(prev=>prev.map(i=>i.id===g.id?{...i,done:!i.done}:i))} style={{padding:'10px', background:g.done?'#f0fff4':'#f9f9f9', marginBottom:'5px', borderRadius:'8px', fontSize:'13px'}}>{g.text}</div>))}
+                 <button className="btn-secondary" onClick={()=>setShowGoals(false)} style={{marginTop:'10px', width:'100%'}}>닫기</button>
+               </div>
             ) : (
               <TimeGrid tasks={currentTasks} onUpdateTask={updateTask} onDeleteTask={deleteTask} isAdmin={isAdmin} />
             )}
