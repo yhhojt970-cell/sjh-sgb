@@ -476,14 +476,27 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         )}
 
         {showPalette && (
-          <div className="modal-overlay" onClick={() => setShowPalette(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: isMobile ? '24px 24px 0 0' : '24px', padding: '30px', position: isMobile ? 'fixed' : 'relative', bottom: isMobile ? 0 : 'auto', left: isMobile ? 0 : 'auto', right: isMobile ? 0 : 'auto', maxWidth: isMobile ? '100%' : '500px', width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>과목 선택</h2>
-                <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={28} /></button>
-              </div>
-              <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} />
+          <div
+            className="glass"
+            style={{
+              position: 'fixed',
+              right: isMobile ? '10px' : '20px',
+              bottom: isMobile ? '95px' : '120px',
+              width: isMobile ? 'calc(100vw - 20px)' : '420px',
+              maxHeight: isMobile ? '60vh' : '70vh',
+              overflowY: 'auto',
+              background: 'white',
+              borderRadius: '20px',
+              border: '1px solid #ffdeeb',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.12)',
+              zIndex: 980
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 18px 0' }}>
+              <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 팔레트</h2>
+              <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon size={24} /></button>
             </div>
+            <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} />
           </div>
         )}
 
