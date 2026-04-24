@@ -50,12 +50,12 @@ const parseWeekday = (raw) => {
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const isAdmin = user?.role === 'admin' || user?.id === '엄마' || user?.loginId === 'yhhojt970'
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const [activeKidId, setActiveKidId] = useState('')
   const [resolvedKidDocId, setResolvedKidDocId] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const [tasks, setTasks] = useState([])
   const [messages, setMessages] = useState([])
@@ -329,7 +329,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   return (
     <DndContext
-      sensors={sensors}
+      sensors={isMobile ? undefined : sensors}
       collisionDetection={closestCenter}
       onDragStart={(event) => {
         const data = event.active.data.current
@@ -542,7 +542,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 팔레트</h2>
               <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon size={24} /></button>
             </div>
-            <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} />
+            <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} allowDrag={!isMobile && isAdmin} />
           </div>
         )}
 

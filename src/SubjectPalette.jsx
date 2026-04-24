@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { Check, Edit2, Trash2, X } from 'lucide-react'
 
 const DEFAULT_SUBJECTS = [
@@ -11,10 +11,11 @@ const DEFAULT_SUBJECTS = [
   { name: '독서', color: '#ef4444', coins: 1 }
 ]
 
-function PaletteItem({ subject, onSave, onDelete, isAdmin }) {
+function PaletteItem({ subject, onSave, onDelete, isAdmin, allowDrag = true }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `palette-${subject.name}`,
-    data: { type: 'palette', subject: { ...subject, coins: subject.coins || 1 } }
+    data: { type: 'palette', subject: { ...subject, coins: subject.coins || 1 } },
+    disabled: !allowDrag
   })
 
   const [isEditing, setIsEditing] = useState(false)
@@ -36,7 +37,7 @@ function PaletteItem({ subject, onSave, onDelete, isAdmin }) {
     background: 'white',
     borderRadius: '12px',
     padding: '10px 12px',
-    cursor: 'grab',
+    cursor: allowDrag ? 'grab' : 'default',
     userSelect: 'none',
     fontWeight: 800,
     fontSize: '13px'
@@ -61,7 +62,7 @@ function PaletteItem({ subject, onSave, onDelete, isAdmin }) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <div ref={setNodeRef} style={style} {...(allowDrag ? listeners : {})} {...(allowDrag ? attributes : {})}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>{subject.name}</span>
@@ -82,15 +83,16 @@ function PaletteItem({ subject, onSave, onDelete, isAdmin }) {
   )
 }
 
-export function SubjectPalette({ cloud, isAdmin }) {
+export function SubjectPalette({ cloud, isAdmin, allowDrag = true, activeKidId = '' }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const lastSyncedRef = useRef('')
   const readyRef = useRef(false)
+  const initialSubjectsRef = useRef(DEFAULT_SUBJECTS)
 
   const [subjects, setSubjects] = useState(() => {
     if (isCloud) return DEFAULT_SUBJECTS
     try {
-      const saved = localStorage.getItem('kid_app_subjects')
+      const saved = localStorage.getItem(`kid_app_subjects_${activeKidId || 'default'}`)
       if (saved) return JSON.parse(saved)
     } catch (error) {
       console.error(error)
@@ -105,7 +107,7 @@ export function SubjectPalette({ cloud, isAdmin }) {
   const persist = (nextOrUpdater) => {
     setSubjects((previous) => {
       const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(previous || []) : nextOrUpdater
-      if (!isCloud) localStorage.setItem('kid_app_subjects', JSON.stringify(next))
+      if (!isCloud) localStorage.setItem(`kid_app_subjects_${activeKidId || 'default'}`, JSON.stringify(next))
       return next
     })
   }
@@ -119,33 +121,81 @@ export function SubjectPalette({ cloud, isAdmin }) {
   }
 
   useEffect(() => {
-    if (!isCloud) return
+    if (isCloud) return
+    try {
+      const saved = localStorage.getItem(`kid_app_subjects_${activeKidId || 'default'}`)
+      setSubjects(saved ? JSON.parse(saved) : DEFAULT_SUBJECTS)
+    } catch (error) {
+      console.error(error)
+      setSubjects(DEFAULT_SUBJECTS)
+    }
+  }, [isCloud, activeKidId])
+
+  useEffect(() => {
+    if (!isCloud || !activeKidId) return
     readyRef.current = false
     lastSyncedRef.current = ''
+    let unsub = null
+    let cancelled = false
 
-    const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
-    return onSnapshot(ref, (snap) => {
-      const data = snap.exists() ? snap.data() : {}
-      const next = Array.isArray(data?.subjects) ? data.subjects : DEFAULT_SUBJECTS
+    const kidRef = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
+    const legacyRef = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
+
+    const bootstrap = async () => {
+      const kidSnap = await getDoc(kidRef)
+      let next = null
+      if (kidSnap.exists()) {
+        const kidData = kidSnap.data() || {}
+        if (Array.isArray(kidData.subjects) && kidData.subjects.length > 0) {
+          next = kidData.subjects
+        }
+      }
+
+      if (!next) {
+        const legacySnap = await getDoc(legacyRef)
+        const legacyData = legacySnap.exists() ? legacySnap.data() : {}
+        if (Array.isArray(legacyData?.subjects) && legacyData.subjects.length > 0) {
+          next = legacyData.subjects
+        }
+      }
+
+      if (!next) next = DEFAULT_SUBJECTS
+      if (cancelled) return
+      initialSubjectsRef.current = next
       lastSyncedRef.current = JSON.stringify(next || [])
       readyRef.current = true
       setSubjects(next)
-    })
-  }, [isCloud, cloud?.db, cloud?.householdId])
+
+      unsub = onSnapshot(kidRef, (snap) => {
+        const data = snap.exists() ? snap.data() : {}
+        const kidSubjects = Array.isArray(data?.subjects) && data.subjects.length > 0 ? data.subjects : initialSubjectsRef.current
+        lastSyncedRef.current = JSON.stringify(kidSubjects || [])
+        readyRef.current = true
+        setSubjects(kidSubjects)
+      })
+    }
+
+    bootstrap().catch(console.error)
+
+    return () => {
+      cancelled = true
+      if (unsub) unsub()
+    }
+  }, [isCloud, cloud?.db, cloud?.householdId, activeKidId])
 
   useEffect(() => {
-    if (!isCloud || !readyRef.current) return
+    if (!isCloud || !readyRef.current || !activeKidId) return
     const json = JSON.stringify(subjects || [])
     if (json === lastSyncedRef.current) return
 
     const timer = setTimeout(async () => {
-      const ref = doc(cloud.db, 'households', cloud.householdId, 'meta', 'subjects')
+      const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', activeKidId)
       await setDoc(ref, { subjects: subjects || [], updatedAt: serverTimestamp() }, { merge: true })
       lastSyncedRef.current = json
     }, 400)
 
     return () => clearTimeout(timer)
-  }, [isCloud, cloud?.db, cloud?.householdId, subjects])
+  }, [isCloud, cloud?.db, cloud?.householdId, activeKidId, subjects])
 
   const list = useMemo(() => (subjects || []).filter((subject) => subject?.name), [subjects])
 
@@ -153,12 +203,12 @@ export function SubjectPalette({ cloud, isAdmin }) {
     <div style={{ padding: '18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <h3 style={{ fontSize: '15px', fontWeight: 900 }}>과목 팔레트</h3>
-        <span style={{ fontSize: '11px', color: '#999' }}>드래그해서 시간표에 넣기</span>
+        <span style={{ fontSize: '11px', color: '#999' }}>{allowDrag ? '드래그해서 시간표에 넣기' : '코인/색상 설정'}</span>
       </div>
 
       <div style={{ display: 'grid', gap: '10px', marginBottom: '18px' }}>
         {list.map((subject) => (
-          <PaletteItem key={subject.name} subject={subject} onSave={updateSubject} onDelete={deleteSubject} isAdmin={isAdmin} />
+          <PaletteItem key={subject.name} subject={subject} onSave={updateSubject} onDelete={deleteSubject} isAdmin={isAdmin} allowDrag={allowDrag} />
         ))}
       </div>
 

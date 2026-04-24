@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, Edit3, Heart, MessageSquare, Play, Save, Sparkles, Star, Trash2, X } from 'lucide-react'
+import { Clock, Edit3, Heart, MessageSquare, Play, RotateCcw, Save, Sparkles, Star, Trash2, X } from 'lucide-react'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -216,6 +216,18 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
         </div>
         {isAdmin && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {task.type === 'class' && (
+              <button
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
+                }}
+                style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}
+                title="상태 초기화"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
             <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
               <Edit3 size={14} />
             </button>
@@ -263,20 +275,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
-          </div>
-            {isAdmin && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                <button
-                  onPointerDown={(event) => {
-                    event.stopPropagation()
-                    onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
-                  }}
-                  style={{ padding: '4px 8px', borderRadius: '8px', background: '#fff', color: '#888', border: '1px solid #e2e8f0', fontWeight: 700, cursor: 'pointer', fontSize: '11px' }}
-                >
-                  초기화
-                </button>
-              </div>
-            )}
+            </div>
           </div>
         ) : (
           <>
