@@ -137,6 +137,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     .find((value) => value !== null && !Number.isNaN(value))
   const actualDuration = persistedDuration ?? computeDuration(actualStart, actualEnd)
   const classStatus = normalizeClassStatus(task.status, task.completed)
+  const isClassTask = task.type === 'class'
   const canManageTask = isAdmin || task.type !== 'class'
   const [tick, setTick] = useState(Date.now())
 
@@ -195,13 +196,13 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
-    background: task.completed ? '#f8fafc' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)',
+    background: task.completed ? '#f8fafc' : (isClassTask ? 'linear-gradient(135deg, #f7f9ff 0%, #f3f7ff 100%)' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)'),
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
     padding: isMobile ? '10px' : '15px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
-    border: task.completed ? '1px solid #e2e8f0' : `1px solid ${(task.color || PRIMARY_PINK)}20`,
+    border: task.completed ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${(task.color || PRIMARY_PINK)}20`),
     height: '100%'
   }
 
@@ -227,6 +228,11 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
+            {isClassTask ? (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '4px', background: '#dbe7ff', color: '#355eb5', borderRadius: '999px', padding: '2px 8px', fontSize: '10px', fontWeight: 900 }}>
+                고정 수업
+              </div>
+            ) : null}
             <div
               onClick={(event) => {
                 if (!memo) return
@@ -324,7 +330,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
         ) : (
           <>
             {!task.completed && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
-            {actualStart && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#42c99b', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>}
+            {actualStart && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>공부중</button>}
             {task.completed && (
               <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
                 {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration ?? '-'}분)` : '✨ 완료'}
