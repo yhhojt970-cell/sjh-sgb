@@ -617,7 +617,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   {kidsList.map((id) => <option key={id} value={id}>{getFullName(id)}</option>)}
                 </select>
                 <textarea className="input-field" placeholder="메시지 입력" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} style={{ height: '70px', marginBottom: '8px' }} />
-                <button onClick={async () => { if (newMessage && messageTarget) { await mergeMetaDoc('messages', { messages: arrayUnion({ id: Date.now(), text: newMessage, date: todayStr, kidId: messageTarget, read: false }), updatedAt: serverTimestamp() }); setNewMessage(''); } }} className="btn-primary" style={{ width: '100%' }}>전송</button>
+                <button
+                  onClick={async () => {
+                    if (newMessage && messageTarget) {
+                      const now = new Date()
+                      await mergeMetaDoc('messages', {
+                        messages: arrayUnion({
+                          id: Date.now(),
+                          text: newMessage,
+                          date: todayStr,
+                          kidId: messageTarget,
+                          read: false,
+                          createdAt: now.toISOString(),
+                          createdAtLabel: format(now, 'yyyy-MM-dd HH:mm')
+                        }),
+                        updatedAt: serverTimestamp()
+                      })
+                      setNewMessage('')
+                    }
+                  }}
+                  className="btn-primary"
+                  style={{ width: '100%' }}
+                >
+                  전송
+                </button>
               </div>
               <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
                 {messages.slice().reverse().map((message) => (
@@ -625,6 +648,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                       <strong>{getFullName(message.kidId)}</strong>
                       <span>{message.read ? '읽음' : '안 읽음'}</span>
+                    </div>
+                    <div style={{ color: '#999', fontSize: '11px', marginBottom: '4px' }}>
+                      {message.createdAtLabel || (message.createdAt ? format(new Date(message.createdAt), 'yyyy-MM-dd HH:mm') : `${message.date || ''}`)}
                     </div>
                     <div>{message.text}</div>
                     {message.reply && <div style={{ marginTop: '5px', color: PRIMARY_PINK, fontWeight: 'bold' }}>답장: {message.reply}</div>}
