@@ -87,6 +87,8 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const [draftStartTime, setDraftStartTime] = useState(task.startTime || '07:00')
   const [draftDuration, setDraftDuration] = useState(Number(task.duration || 50))
   const [draftMemo, setDraftMemo] = useState(task.memo || task.note || '')
+  const [draftColor, setDraftColor] = useState(task.color || PRIMARY_PINK)
+  const [draftCoins, setDraftCoins] = useState(Number(task.coins || (task.type === 'study' ? 1 : 0)))
   const [draftStartDate, setDraftStartDate] = useState(task.startDate || task.classStartDate || '')
   const [draftEndDate, setDraftEndDate] = useState(task.endDate || task.classEndDate || '')
 
@@ -95,6 +97,8 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     setDraftStartTime(task.startTime || '07:00')
     setDraftDuration(Number(task.duration || 50))
     setDraftMemo(task.memo || task.note || '')
+    setDraftColor(task.color || PRIMARY_PINK)
+    setDraftCoins(Number(task.coins || (task.type === 'study' ? 1 : 0)))
     setDraftStartDate(task.startDate || task.classStartDate || '')
     setDraftEndDate(task.endDate || task.classEndDate || '')
   }, [task])
@@ -144,6 +148,8 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
       memo: draftMemo.trim(),
       note: draftMemo.trim(),
+      color: draftColor || task.color || PRIMARY_PINK,
+      coins: Math.max(0, Number(draftCoins || 0)),
       startDate: draftStartDate || null,
       endDate: draftEndDate || null,
       classStartDate: draftStartDate || null,
@@ -244,6 +250,10 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
           <div style={{ display: 'flex', gap: '6px' }}>
             <input className="input-field" type="time" value={draftStartTime} onChange={(event) => setDraftStartTime(event.target.value)} />
             <input className="input-field" type="number" min="1" value={draftDuration} onChange={(event) => setDraftDuration(Number(event.target.value || 0))} placeholder="분" />
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer' }} />
+            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>

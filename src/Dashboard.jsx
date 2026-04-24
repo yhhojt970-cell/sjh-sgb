@@ -542,7 +542,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 팔레트</h2>
               <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon size={24} /></button>
             </div>
-            <SubjectPalette cloud={cloud} activeKidId={activeKidId} kids={kidsList} onSubjectsChange={() => {}} isAdmin={isAdmin} allowDrag={!isMobile && isAdmin} />
+            <SubjectPalette
+              cloud={cloud}
+              activeKidId={activeKidId}
+              kids={kidsList}
+              kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
+              onSubjectsChange={() => {}}
+              isAdmin={isAdmin}
+              allowDrag={!isMobile && isAdmin}
+            />
           </div>
         )}
 
