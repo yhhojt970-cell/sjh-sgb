@@ -66,6 +66,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [essentials, setEssentials] = useState([])
   const [rewards, setRewards] = useState([])
   const [spentCoins, setSpentCoins] = useState(0)
+  const [allowanceEntries, setAllowanceEntries] = useState([])
 
   const [showSettings, setShowSettings] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
@@ -82,6 +83,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [replyText, setReplyText] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [newAllowance, setNewAllowance] = useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    type: 'income',
+    amount: '',
+    title: '',
+    memo: ''
+  })
   const [bulkInput, setBulkInput] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
 
@@ -163,6 +171,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setRewards(Array.isArray(data?.rewards) ? data.rewards : [])
       setEssentials(Array.isArray(data?.essentials) ? data.essentials : [])
       setSpentCoins(Number(data?.spentCoins || 0))
+      setAllowanceEntries(Array.isArray(data?.allowanceEntries) ? data.allowanceEntries : [])
     })
   }, [resolvedKidDocId, isCloud, cloud?.db, cloud?.householdId])
 
@@ -191,7 +200,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     if (!isCloud || !resolvedKidDocId) return
     await setDoc(
       doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId),
-      { tasks, rewards, essentials, spentCoins, ...overrides, updatedAt: serverTimestamp() },
+      { tasks, rewards, essentials, spentCoins, allowanceEntries, ...overrides, updatedAt: serverTimestamp() },
       { merge: true }
     )
   }
@@ -261,6 +270,20 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [tasks, selectedDate])
 
+  const allowanceSummary = useMemo(() => {
+    const totalIncome = allowanceEntries
+      .filter((entry) => entry.type === 'income')
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0)
+    const totalExpense = allowanceEntries
+      .filter((entry) => entry.type === 'expense')
+      .reduce((sum, entry) => sum + Number(entry.amount || 0), 0)
+    return {
+      totalIncome,
+      totalExpense,
+      balance: totalIncome - totalExpense
+    }
+  }, [allowanceEntries])
+
   const nextRewardInfo = useMemo(() => {
     const sorted = [...rewards]
       .filter((reward) => Number(reward?.coins) > availableCoins)
@@ -320,6 +343,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       console.error(error)
       alert('비밀번호 변경에 실패했어요. 다시 로그인 후 시도해 주세요.')
     }
+  }
+
+  const handleAddAllowance = async () => {
+    const title = String(newAllowance.title || '').trim()
+    const amount = Number(newAllowance.amount || 0)
+    if (!title || amount <= 0) return
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      date: newAllowance.date || format(new Date(), 'yyyy-MM-dd'),
+      type: newAllowance.type === 'expense' ? 'expense' : 'income',
+      amount,
+      title,
+      memo: String(newAllowance.memo || '').trim()
+    }
+    const next = [...allowanceEntries, entry]
+    setAllowanceEntries(next)
+    await persistKidState({ allowanceEntries: next })
+    setNewAllowance((prev) => ({ ...prev, amount: '', title: '', memo: '' }))
+  }
+
+  const handleDeleteAllowance = async (id) => {
+    const next = allowanceEntries.filter((entry) => entry.id !== id)
+    setAllowanceEntries(next)
+    await persistKidState({ allowanceEntries: next })
   }
 
   useEffect(() => {
@@ -719,6 +766,59 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   <div style={{ fontSize: '12px', color: '#c47b00', fontWeight: 'bold', marginBottom: '6px' }}>이번 달 리포트</div>
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#333' }}>{weekMonthReport.monthCoins}</div>
                   <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>{weekMonthReport.monthCount}개 완료</div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: isMobile ? '12px' : '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900 }}>용돈기입장</h3>
+                  <span style={{ fontSize: '11px', color: '#666' }}>{getFullName(activeKidId)} 전용</span>
+                </div>
+
+                <div style={{ display: 'grid', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input className="input-field" type="date" value={newAllowance.date} onChange={(e) => setNewAllowance({ ...newAllowance, date: e.target.value })} />
+                    <select className="input-field" value={newAllowance.type} onChange={(e) => setNewAllowance({ ...newAllowance, type: e.target.value })}>
+                      <option value="income">받음(+)</option>
+                      <option value="expense">씀(-)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input className="input-field" placeholder="내용 (예: 간식)" value={newAllowance.title} onChange={(e) => setNewAllowance({ ...newAllowance, title: e.target.value })} />
+                    <input className="input-field" type="number" min="0" placeholder="금액" value={newAllowance.amount} onChange={(e) => setNewAllowance({ ...newAllowance, amount: e.target.value })} />
+                  </div>
+                  <input className="input-field" placeholder="메모 (선택)" value={newAllowance.memo} onChange={(e) => setNewAllowance({ ...newAllowance, memo: e.target.value })} />
+                  <button className="btn-primary" onClick={handleAddAllowance} style={{ width: '100%' }}>기록 추가</button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#166534' }}>받은 금액</div>
+                    <div style={{ fontWeight: 900, color: '#166534' }}>+{allowanceSummary.totalIncome}</div>
+                  </div>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#991b1b' }}>쓴 금액</div>
+                    <div style={{ fontWeight: 900, color: '#991b1b' }}>-{allowanceSummary.totalExpense}</div>
+                  </div>
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#1d4ed8' }}>잔액</div>
+                    <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{allowanceSummary.balance}</div>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+                  {allowanceEntries.slice().reverse().map((entry) => (
+                    <div key={entry.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{entry.amount})</div>
+                        <div style={{ color: '#999' }}>{entry.date}{entry.memo ? ` · ${entry.memo}` : ''}</div>
+                      </div>
+                      <button onClick={() => handleDeleteAllowance(entry.id)} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}>
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {allowanceEntries.length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 기록이 없어요.</div>}
                 </div>
               </div>
 
