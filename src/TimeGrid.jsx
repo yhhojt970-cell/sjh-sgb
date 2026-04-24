@@ -102,7 +102,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { type: 'task', task },
-    disabled: isEditing
+    disabled: isEditing || isMobile
   })
 
   const memo = task.memo || task.note || ''
@@ -183,7 +183,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...(isEditing ? {} : attributes)} {...(isEditing ? {} : listeners)}>
+    <div ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
@@ -258,20 +258,24 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
 
       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
         {task.type === 'class' ? (
-          <div style={{ display: 'grid', gap: '6px', width: '100%', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : (isAdmin ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))') }}>
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'grid', gap: '6px', width: '100%', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
+          </div>
             {isAdmin && (
-              <button
-                onPointerDown={(event) => {
-                  event.stopPropagation()
-                  onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
-                }}
-                style={{ padding: '8px', borderRadius: '10px', background: '#fff', color: '#666', border: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}
-              >
-                초기화
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <button
+                  onPointerDown={(event) => {
+                    event.stopPropagation()
+                    onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
+                  }}
+                  style={{ padding: '4px 8px', borderRadius: '8px', background: '#fff', color: '#888', border: '1px solid #e2e8f0', fontWeight: 700, cursor: 'pointer', fontSize: '11px' }}
+                >
+                  초기화
+                </button>
+              </div>
             )}
           </div>
         ) : (
