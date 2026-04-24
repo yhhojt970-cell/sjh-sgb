@@ -508,7 +508,31 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               </div>
               <div>
                 <h1 style={{ fontSize: isMobile ? '17px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
-                  {getFullName(activeKidId)}
+                  {isAdmin ? (
+                    <span style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: '14px', padding: '4px', border: '1px solid #e2e8f0' }}>
+                      {kidsList.map((id) => (
+                        <button
+                          key={id}
+                          onClick={() => setActiveKidId(id)}
+                          style={{
+                            border: 'none',
+                            background: activeKidId === id ? 'white' : 'transparent',
+                            color: activeKidId === id ? PRIMARY_PINK : '#64748b',
+                            fontWeight: 900,
+                            fontSize: isMobile ? '14px' : '13px',
+                            borderRadius: '10px',
+                            padding: isMobile ? '7px 14px' : '6px 12px',
+                            boxShadow: activeKidId === id ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {getFullName(id)}
+                        </button>
+                      ))}
+                    </span>
+                  ) : (
+                    getFullName(activeKidId)
+                  )}
                   {isMobile ? (
                     <span
                       style={{
@@ -549,29 +573,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     </span>
                   )}
                 </h1>
-                {isAdmin && (
-                  <div style={{ marginTop: '10px', display: 'inline-flex', background: '#f1f5f9', borderRadius: '14px', padding: '4px', border: '1px solid #e2e8f0' }}>
-                    {kidsList.map((id) => (
-                      <button
-                        key={id}
-                        onClick={() => setActiveKidId(id)}
-                        style={{
-                          border: 'none',
-                          background: activeKidId === id ? 'white' : 'transparent',
-                          color: activeKidId === id ? PRIMARY_PINK : '#64748b',
-                          fontWeight: 900,
-                          fontSize: isMobile ? '18px' : '14px',
-                          borderRadius: '10px',
-                          padding: isMobile ? '8px 18px' : '7px 16px',
-                          boxShadow: activeKidId === id ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {getFullName(id)}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
