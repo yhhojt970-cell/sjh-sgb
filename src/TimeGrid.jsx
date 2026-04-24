@@ -71,7 +71,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
 
       <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
-          <div key={task.id} style={{ flex: isMobile ? '1 1 100%' : '1 1 calc(33.333% - 10px)', minWidth: isMobile ? '100%' : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
+          <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? '100%' : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
             <TaskCard task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
           </div>
         ))}
