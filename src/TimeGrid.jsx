@@ -1,16 +1,33 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { Clock, Heart, Play, Sparkles, Star, Trash2 } from 'lucide-react'
+import { Clock, Edit3, Heart, MessageSquare, Play, Save, Sparkles, Star, Trash2, X } from 'lucide-react'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const HOURS = Array.from({ length: 18 }, (_, index) => index + 7)
 
+const buildExpectedEndTime = (startTime, duration = 50) => {
+  const [hour, minute] = String(startTime || '00:00').split(':').map(Number)
+  const total = hour * 60 + minute + Number(duration || 0)
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+const normalizeClassStatus = (status, completed) => {
+  const value = String(status || '').trim().toLowerCase()
+  if (value === 'completed' || value === '완료' || completed) return 'completed'
+  if (value === 'holiday' || value === '휴강') return 'holiday'
+  if (value === 'absent' || value === '결석') return 'absent'
+  return ''
+}
+
 function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
-  const hourTasks = tasks.filter((task) => parseInt(task.startTime.split(':')[0], 10) === hour)
+  const hourTasks = useMemo(
+    () => tasks.filter((task) => parseInt(String(task.startTime || '00:00').split(':')[0], 10) === hour),
+    [tasks, hour]
+  )
 
   useEffect(() => {
     if (!isMobile || !activeSlot) return
@@ -24,7 +41,15 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
       onClick={() => isAdmin && setActiveSlot((prev) => !prev)}
       onMouseEnter={() => !isMobile && setActiveSlot(true)}
       onMouseLeave={() => !isMobile && setActiveSlot(false)}
-      style={{ display: 'flex', minHeight: hourTasks.length > 0 ? '110px' : '55px', borderBottom: '1px solid rgba(0,0,0,0.05)', background: isOver ? 'rgba(255,77,109,0.05)' : 'transparent', transition: 'all 0.2s ease', position: 'relative', cursor: isAdmin ? 'pointer' : 'default' }}
+      style={{
+        display: 'flex',
+        minHeight: hourTasks.length > 0 ? '110px' : '55px',
+        borderBottom: '1px solid rgba(0,0,0,0.05)',
+        background: isOver ? 'rgba(255,77,109,0.05)' : 'transparent',
+        transition: 'all 0.2s ease',
+        position: 'relative',
+        cursor: isAdmin ? 'pointer' : 'default'
+      }}
     >
       <div style={{ width: '60px', padding: '15px 0', fontSize: '13px', color: '#999', fontWeight: 'bold', borderRight: '1px solid rgba(0,0,0,0.03)', textAlign: 'center' }}>
         {String(hour).padStart(2, '0')}:00
@@ -56,12 +81,31 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
 }
 
 function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, data: { type: 'task', task } })
+  const [isEditing, setIsEditing] = useState(false)
+  const [showMemo, setShowMemo] = useState(false)
+  const [draftName, setDraftName] = useState(task.name || '')
+  const [draftStartTime, setDraftStartTime] = useState(task.startTime || '07:00')
+  const [draftDuration, setDraftDuration] = useState(Number(task.duration || 50))
+  const [draftMemo, setDraftMemo] = useState(task.memo || task.note || '')
 
+  useEffect(() => {
+    setDraftName(task.name || '')
+    setDraftStartTime(task.startTime || '07:00')
+    setDraftDuration(Number(task.duration || 50))
+    setDraftMemo(task.memo || task.note || '')
+  }, [task])
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    data: { type: 'task', task },
+    disabled: isEditing
+  })
+
+  const memo = task.memo || task.note || ''
   const actualStart = task.actualStartTime || task.startTimeActual || ''
   const actualEnd = task.actualEndTime || task.endTimeActual || ''
   const actualDuration = task.durationActual || task.actualDuration || ''
-  const classStatus = task.status || (task.completed ? 'completed' : '')
+  const classStatus = normalizeClassStatus(task.status, task.completed)
 
   const handleStartTimer = () => {
     if (actualStart) return
@@ -73,18 +117,31 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     const nowDate = new Date()
     const now = format(nowDate, 'HH:mm')
     const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now }
-    const startValue = actualStart
-
-    if (startValue) {
-      const [h, m] = startValue.split(':').map(Number)
+    if (actualStart) {
+      const [h, m] = actualStart.split(':').map(Number)
       const startedAt = new Date()
       startedAt.setHours(h, m, 0, 0)
       const minutes = Math.max(0, Math.round((nowDate - startedAt) / 60000))
       updates.durationActual = minutes
       updates.actualDuration = minutes
     }
-
     onUpdateTask(task.id, updates)
+  }
+
+  const saveEdit = () => {
+    const safeName = draftName.trim()
+    if (!safeName) return
+
+    const safeDuration = Math.max(1, Number(draftDuration || 0))
+    onUpdateTask(task.id, {
+      name: safeName,
+      startTime: draftStartTime,
+      duration: safeDuration,
+      expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
+      memo: draftMemo.trim(),
+      note: draftMemo.trim()
+    })
+    setIsEditing(false)
   }
 
   const style = {
@@ -118,11 +175,11 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   }
 
   return (
-    <div ref={setNodeRef} {...attributes} {...listeners} style={style}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div>
-            <div style={{ fontWeight: 900, color: '#333', fontSize: '15px' }}>
+    <div ref={setNodeRef} style={style} {...(isEditing ? {} : attributes)} {...(isEditing ? {} : listeners)}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 900, color: '#333', fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
             </div>
             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -130,13 +187,60 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             </div>
           </div>
         </div>
-        {isAdmin && <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>}
+        {isAdmin && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
+              <Edit3 size={14} />
+            </button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}>
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
       </div>
+
+      {isEditing && isAdmin ? (
+        <div style={{ display: 'grid', gap: '6px', marginBottom: '10px', background: '#fff7fa', border: '1px solid #ffdbe5', borderRadius: '10px', padding: '10px' }}>
+          <input className="input-field" value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="일정 이름" />
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <input className="input-field" type="time" value={draftStartTime} onChange={(event) => setDraftStartTime(event.target.value)} />
+            <input className="input-field" type="number" min="1" value={draftDuration} onChange={(event) => setDraftDuration(Number(event.target.value || 0))} placeholder="분" />
+          </div>
+          <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); saveEdit() }} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+              <Save size={14} /> 저장
+            </button>
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing(false) }} style={{ flex: 1, border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <X size={14} style={{ verticalAlign: 'middle' }} /> 취소
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {memo ? (
+        <button
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            setShowMemo((prev) => !prev)
+          }}
+          style={{ width: '100%', textAlign: 'left', border: '1px dashed #ffd2de', background: '#fff8fb', color: '#d6336c', borderRadius: '10px', padding: '7px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: showMemo ? '6px' : '10px' }}
+        >
+          <MessageSquare size={13} />
+          메모 보기
+        </button>
+      ) : null}
+      {memo && showMemo ? (
+        <div style={{ border: '1px solid #ffe0ea', background: '#fff', borderRadius: '10px', padding: '10px', marginBottom: '10px', fontSize: '12px', lineHeight: 1.5, color: '#444', whiteSpace: 'pre-wrap' }}>
+          {memo}
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
         {task.type === 'class' ? (
           <>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: !task.completed, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
             <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
           </>

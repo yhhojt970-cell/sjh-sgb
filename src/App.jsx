@@ -8,7 +8,7 @@ const HOUSEHOLD_ID = 'SJH-SGB'
 
 const ACCOUNTS = {
   yhhojt970: { name: '엄마', displayName: '엄마', mascot: '🌷', role: 'admin', accent: '#ff8fb1' },
-  sjh150717: { name: '지희', displayName: '손지희', mascot: '🫧', role: 'child', accent: '#7c9cff' },
+  sjh150717: { name: '지희', displayName: '손지희', mascot: '🌸', role: 'child', accent: '#7c9cff' },
   sgb170101: { name: '가빈', displayName: '손가빈', mascot: '🐱', role: 'child', accent: '#42c99b' }
 }
 

@@ -337,6 +337,21 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         if (data?.type === 'palette' && over.id.toString().startsWith('hour-')) {
           await addTaskFromPalette(over.data.current.hour, data.subject)
         }
+        if (data?.type === 'task' && over.id.toString().startsWith('hour-')) {
+          const nextHour = Number(over.data.current.hour)
+          const next = tasks.map((task) => {
+            if (String(task.id) !== String(active.id)) return task
+            const [, minute = '00'] = String(task.startTime || '00:00').split(':')
+            const nextStartTime = `${String(nextHour).padStart(2, '0')}:${minute}`
+            return {
+              ...task,
+              startTime: nextStartTime,
+              expectedEndTime: buildExpectedEndTime(nextStartTime, task.duration || DEFAULT_DURATION)
+            }
+          })
+          setTasks(next)
+          await persistKidState({ tasks: next })
+        }
         setActiveDragItem(null)
       }}
     >
@@ -398,8 +413,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         <main style={{ width: '100%' }}>
           {isAdmin && (
-            <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 100 }}>
-              <button onClick={() => setShowPalette(true)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255,77,109,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 950 }}>
+              <button onClick={() => setShowPalette((prev) => !prev)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255,77,109,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Plus size={isMobile ? 35 : 40} />
               </button>
             </div>
