@@ -71,7 +71,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
 
       <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
-          <div key={task.id} style={{ flex: isMobile ? '1 1 100%' : '1 1 calc(33.333% - 10px)', minWidth: isMobile ? '100%' : '260px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
+          <div key={task.id} style={{ flex: isMobile ? '1 1 100%' : '1 1 calc(33.333% - 10px)', minWidth: isMobile ? '100%' : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
             <TaskCard task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
           </div>
         ))}
@@ -137,6 +137,16 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     .find((value) => value !== null && !Number.isNaN(value))
   const actualDuration = persistedDuration ?? computeDuration(actualStart, actualEnd)
   const classStatus = normalizeClassStatus(task.status, task.completed)
+  const canManageTask = isAdmin || task.type !== 'class'
+  const [tick, setTick] = useState(Date.now())
+
+  useEffect(() => {
+    if (task.type === 'class' || task.completed || !actualStart) return
+    const timer = setInterval(() => setTick(Date.now()), 10000)
+    return () => clearInterval(timer)
+  }, [task.type, task.completed, actualStart])
+
+  const liveDuration = task.completed ? actualDuration : (actualStart ? computeDuration(actualStart, format(new Date(tick), 'HH:mm')) : null)
 
   const handleStartTimer = () => {
     if (actualStart) return
@@ -188,7 +198,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     background: task.completed ? '#f8fafc' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)',
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
-    padding: isMobile ? '11px' : '15px',
+    padding: isMobile ? '10px' : '15px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
     border: task.completed ? '1px solid #e2e8f0' : `1px solid ${(task.color || PRIMARY_PINK)}20`,
@@ -244,9 +254,9 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             </div>
           </div>
         </div>
-        {isAdmin && (
+        {canManageTask && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {task.type === 'class' && (
+            {isAdmin && task.type === 'class' && (
               <button
                 onPointerDown={(event) => {
                   event.stopPropagation()
@@ -268,7 +278,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
         )}
       </div>
 
-      {isEditing && isAdmin ? (
+      {isEditing && canManageTask ? (
         <div style={{ display: 'grid', gap: '6px', marginBottom: '10px', background: '#fff7fa', border: '1px solid #ffdbe5', borderRadius: '10px', padding: '10px' }}>
           <input className="input-field" value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="일정 이름" />
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -318,6 +328,11 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             {task.completed && (
               <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
                 {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration ?? '-'}분)` : '✨ 완료'}
+              </div>
+            )}
+            {!task.completed && actualStart && (
+              <div style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold', lineHeight: 1.2 }}>
+                ⏱ 진행 중 {liveDuration ?? 0}분
               </div>
             )}
           </>

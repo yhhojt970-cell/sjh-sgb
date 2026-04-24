@@ -254,16 +254,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const todayMessagesForKid = messagesForKid.filter((message) => message.date === todayStr)
   const unreadMessage = messagesForKid.find((message) => !message.read)
   const hasReadToday = todayMessagesForKid.some((message) => message.read)
+  const unreadRepliesForAdmin = useMemo(
+    () => messages.filter((message) => message.reply && !message.replyReadByAdmin).length,
+    [messages]
+  )
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
 
   const handleSendReply = async () => {
     if (!replyText || !unreadMessage) return
-    const next = messages.map((message) => (message.id === unreadMessage.id ? { ...message, reply: replyText, read: true } : message))
+    const next = messages.map((message) => (message.id === unreadMessage.id ? { ...message, reply: replyText, read: true, replyReadByAdmin: false } : message))
     await mergeMetaDoc('messages', { messages: next, updatedAt: serverTimestamp() })
     setReplyText('')
     setShowSurprise(false)
   }
+
+  useEffect(() => {
+    if (!isAdmin || !showFamilyManager || unreadRepliesForAdmin === 0 || !isCloud) return
+    const run = async () => {
+      const next = messages.map((message) => (message.reply && !message.replyReadByAdmin ? { ...message, replyReadByAdmin: true } : message))
+      await mergeMetaDoc('messages', { messages: next, updatedAt: serverTimestamp() })
+    }
+    run().catch(console.error)
+  }, [isAdmin, showFamilyManager, unreadRepliesForAdmin, isCloud, messages])
 
   const addTaskFromPalette = async (hour, subject) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
@@ -441,7 +454,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '2px' : 0 }}>
               {isAdmin && <button onClick={() => setShowPalette((prev) => !prev)} className="header-btn-original"><Plus size={isMobile ? 18 : 22} /></button>}
-              {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22} /></button>}
+              {isAdmin && (
+                <button onClick={() => setShowFamilyManager(true)} className="header-btn-original" style={{ position: 'relative' }}>
+                  <Users size={isMobile ? 18 : 22} />
+                  {unreadRepliesForAdmin > 0 ? (
+                    <span style={{ position: 'absolute', top: '-6px', right: '-6px', minWidth: '18px', height: '18px', borderRadius: '999px', background: PRIMARY_PINK, color: 'white', fontSize: '10px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                      {unreadRepliesForAdmin > 9 ? '9+' : unreadRepliesForAdmin}
+                    </span>
+                  ) : null}
+                </button>
+              )}
               {isAdmin && <button onClick={() => setShowClassManager(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><Gift size={isMobile ? 18 : 22} /></button>}
               <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22} /></button>
