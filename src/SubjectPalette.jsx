@@ -155,7 +155,8 @@ export function SubjectPalette({
   allowDrag = true,
   activeKidId = '',
   kids = [],
-  kidLabels = {}
+  kidLabels = {},
+  onCoinChange
 }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const targetKidIds = useMemo(() => {
@@ -284,7 +285,14 @@ export function SubjectPalette({
             <PaletteItem
               key={`${kidId}-${subject.name}`}
               subject={subject}
-              onSave={(previousName, nextSubject) => updateKidSubjects(kidId, (items) => (items || []).map((item) => (item.name === previousName ? nextSubject : item)))}
+              onSave={(previousName, nextSubject) => {
+                const beforeCoins = Number(subject.coins || 0)
+                const afterCoins = Number(nextSubject.coins || 0)
+                updateKidSubjects(kidId, (items) => (items || []).map((item) => (item.name === previousName ? nextSubject : item)))
+                if (typeof onCoinChange === 'function' && beforeCoins !== afterCoins) {
+                  onCoinChange({ kidId, subjectName: nextSubject.name || previousName, beforeCoins, afterCoins })
+                }
+              }}
               onDelete={(name) => updateKidSubjects(kidId, (items) => (items || []).filter((item) => item.name !== name))}
               allowDrag={allowKidDrag}
               canEditName

@@ -174,6 +174,24 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', docId), payload, { merge: true })
   }
 
+  const appendSystemLog = async ({ kidId, text }) => {
+    if (!isCloud || !text) return
+    const now = new Date()
+    await mergeMetaDoc('messages', {
+      messages: arrayUnion({
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        kind: 'system',
+        kidId,
+        text,
+        read: true,
+        date: format(now, 'yyyy-MM-dd'),
+        createdAt: now.toISOString(),
+        createdAtLabel: format(now, 'yyyy-MM-dd HH:mm')
+      }),
+      updatedAt: serverTimestamp()
+    })
+  }
+
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), index))
   const todayStr = format(selectedDate, 'yyyy-MM-dd')
 
@@ -232,7 +250,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     return aliases.includes(kidId)
   }
 
-  const messagesForKid = messages.filter((message) => isMessageForActiveKid(message.kidId))
+  const messagesForKid = messages.filter((message) => isMessageForActiveKid(message.kidId) && message.kind !== 'system')
   const todayMessagesForKid = messagesForKid.filter((message) => message.date === todayStr)
   const unreadMessage = messagesForKid.find((message) => !message.read)
   const hasReadToday = todayMessagesForKid.some((message) => message.read)
@@ -368,15 +386,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     >
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
         <header style={{ ...glassStyle, padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(255,77,109,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: isMobile ? '10px' : '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '15px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '8px' : '20px', flexDirection: isMobile ? 'column' : 'row' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '15px' }}>
               <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
                 <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none' }}>
                   {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" />}
                 </div>
               </div>
               <div>
-                <h1 style={{ fontSize: isMobile ? '18px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                <h1 style={{ fontSize: isMobile ? '17px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
                   {getFullName(activeKidId)}
                   {isMobile ? (
                     <span
@@ -421,7 +439,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px' }}>
+            <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '2px' : 0 }}>
               {isAdmin && <button onClick={() => setShowPalette((prev) => !prev)} className="header-btn-original"><Plus size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowClassManager(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
@@ -548,6 +566,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               kids={kidsList}
               kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
               onSubjectsChange={() => {}}
+              onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
+                if (!isAdmin || beforeCoins === afterCoins) return
+                await appendSystemLog({
+                  kidId,
+                  text: `코인 변경: ${getFullName(kidId)} · ${subjectName} (${beforeCoins} → ${afterCoins})`
+                })
+              }}
               isAdmin={isAdmin}
               allowDrag={!isMobile && isAdmin}
             />
@@ -713,8 +738,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 {messages.slice().reverse().map((message) => (
                   <div key={message.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '12px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <strong>{getFullName(message.kidId)}</strong>
-                      <span>{message.read ? '읽음' : '안 읽음'}</span>
+                      <strong>{message.kind === 'system' ? `시스템 · ${getFullName(message.kidId)}` : getFullName(message.kidId)}</strong>
+                      <span>{message.kind === 'system' ? '로그' : (message.read ? '읽음' : '안 읽음')}</span>
                     </div>
                     <div style={{ color: '#999', fontSize: '11px', marginBottom: '4px' }}>
                       {message.createdAtLabel || (message.createdAt ? format(new Date(message.createdAt), 'yyyy-MM-dd HH:mm') : `${message.date || ''}`)}

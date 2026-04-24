@@ -43,7 +43,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
       onMouseLeave={() => !isMobile && setActiveSlot(false)}
       style={{
         display: 'flex',
-        minHeight: hourTasks.length > 0 ? '110px' : '55px',
+        minHeight: hourTasks.length > 0 ? (isMobile ? '92px' : '110px') : (isMobile ? '50px' : '55px'),
         borderBottom: '1px solid rgba(0,0,0,0.05)',
         background: isOver ? 'rgba(255,77,109,0.05)' : 'transparent',
         transition: 'all 0.2s ease',
@@ -112,7 +112,30 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const memo = task.memo || task.note || ''
   const actualStart = task.actualStartTime || task.startTimeActual || ''
   const actualEnd = task.actualEndTime || task.endTimeActual || ''
-  const actualDuration = task.durationActual || task.actualDuration || ''
+  const parseClockToMinutes = (value) => {
+    if (!value || typeof value !== 'string' || !value.includes(':')) return null
+    const [h, m] = value.split(':').map((n) => parseInt(n, 10))
+    if (Number.isNaN(h) || Number.isNaN(m)) return null
+    return h * 60 + m
+  }
+  const computeDuration = (startClock, endClock) => {
+    const startMin = parseClockToMinutes(startClock)
+    const endMin = parseClockToMinutes(endClock)
+    if (startMin === null || endMin === null) return null
+    let diff = endMin - startMin
+    if (diff < 0) diff += 24 * 60
+    return diff
+  }
+  const persistedDuration = [
+    task.durationActual,
+    task.actualDuration,
+    task.durationMinutes,
+    task.elapsedMinutes,
+    task.spentMinutes
+  ]
+    .map((value) => (value === '' || value === null || value === undefined ? null : Number(value)))
+    .find((value) => value !== null && !Number.isNaN(value))
+  const actualDuration = persistedDuration ?? computeDuration(actualStart, actualEnd)
   const classStatus = normalizeClassStatus(task.status, task.completed)
 
   const handleStartTimer = () => {
@@ -132,6 +155,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       const minutes = Math.max(0, Math.round((nowDate - startedAt) / 60000))
       updates.durationActual = minutes
       updates.actualDuration = minutes
+      updates.durationMinutes = minutes
     }
     onUpdateTask(task.id, updates)
   }
@@ -164,7 +188,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     background: task.completed ? '#f8fafc' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)',
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
-    padding: '15px',
+    padding: isMobile ? '11px' : '15px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
     border: task.completed ? '1px solid #e2e8f0' : `1px solid ${(task.color || PRIMARY_PINK)}20`,
