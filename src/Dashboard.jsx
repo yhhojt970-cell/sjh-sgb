@@ -49,7 +49,7 @@ const parseWeekday = (raw) => {
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = user?.role === 'admin' || user?.id === '엄마' || user?.loginId === 'yhhojt970'
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const [activeKidId, setActiveKidId] = useState('')
@@ -375,6 +375,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
 
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px' }}>
+              {isAdmin && <button onClick={() => setShowPalette((prev) => !prev)} className="header-btn-original"><Plus size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowFamilyManager(true)} className="header-btn-original"><Users size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowClassManager(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
               {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><Gift size={isMobile ? 18 : 22} /></button>}

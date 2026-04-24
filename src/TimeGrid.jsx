@@ -87,12 +87,16 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const [draftStartTime, setDraftStartTime] = useState(task.startTime || '07:00')
   const [draftDuration, setDraftDuration] = useState(Number(task.duration || 50))
   const [draftMemo, setDraftMemo] = useState(task.memo || task.note || '')
+  const [draftStartDate, setDraftStartDate] = useState(task.startDate || task.classStartDate || '')
+  const [draftEndDate, setDraftEndDate] = useState(task.endDate || task.classEndDate || '')
 
   useEffect(() => {
     setDraftName(task.name || '')
     setDraftStartTime(task.startTime || '07:00')
     setDraftDuration(Number(task.duration || 50))
     setDraftMemo(task.memo || task.note || '')
+    setDraftStartDate(task.startDate || task.classStartDate || '')
+    setDraftEndDate(task.endDate || task.classEndDate || '')
   }, [task])
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -139,7 +143,11 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       duration: safeDuration,
       expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
       memo: draftMemo.trim(),
-      note: draftMemo.trim()
+      note: draftMemo.trim(),
+      startDate: draftStartDate || null,
+      endDate: draftEndDate || null,
+      classStartDate: draftStartDate || null,
+      classEndDate: draftEndDate || null
     })
     setIsEditing(false)
   }
@@ -147,7 +155,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
-    background: task.completed ? '#f8fafc' : 'white',
+    background: task.completed ? '#f8fafc' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)',
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
     padding: '15px',
@@ -179,7 +187,26 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, color: '#333', fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div
+              onClick={(event) => {
+                if (!memo) return
+                event.stopPropagation()
+                setShowMemo((prev) => !prev)
+              }}
+              style={{
+                fontWeight: 900,
+                color: '#333',
+                fontSize: '15px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                cursor: memo ? 'pointer' : 'default',
+                textDecorationLine: memo ? 'underline' : 'none',
+                textDecorationStyle: memo ? 'dotted' : 'solid',
+                textUnderlineOffset: memo ? '3px' : 0
+              }}
+              title={memo ? '클릭해서 메모 보기' : ''}
+            >
               {task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
             </div>
             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -208,6 +235,10 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>
+            <input className="input-field" type="date" value={draftStartDate} onChange={(event) => setDraftStartDate(event.target.value)} placeholder="수업 시작 날짜" />
+            <input className="input-field" type="date" value={draftEndDate} onChange={(event) => setDraftEndDate(event.target.value)} placeholder="수업 종료 날짜" />
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
             <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); saveEdit() }} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
               <Save size={14} /> 저장
             </button>
@@ -218,21 +249,9 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
         </div>
       ) : null}
 
-      {memo ? (
-        <button
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            setShowMemo((prev) => !prev)
-          }}
-          style={{ width: '100%', textAlign: 'left', border: '1px dashed #ffd2de', background: '#fff8fb', color: '#d6336c', borderRadius: '10px', padding: '7px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: showMemo ? '6px' : '10px' }}
-        >
-          <MessageSquare size={13} />
-          메모 보기
-        </button>
-      ) : null}
       {memo && showMemo ? (
-        <div style={{ border: '1px solid #ffe0ea', background: '#fff', borderRadius: '10px', padding: '10px', marginBottom: '10px', fontSize: '12px', lineHeight: 1.5, color: '#444', whiteSpace: 'pre-wrap' }}>
+        <div style={{ border: '1px solid #ffe0ea', background: 'linear-gradient(135deg, #fffef8 0%, #fff5f9 100%)', borderRadius: '10px', padding: '10px', marginBottom: '10px', fontSize: '12px', lineHeight: 1.5, color: '#444', whiteSpace: 'pre-wrap', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <MessageSquare size={13} style={{ marginTop: '2px', color: '#d6336c', flexShrink: 0 }} />
           {memo}
         </div>
       ) : null}
@@ -262,7 +281,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
 
 export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
   return (
-    <div style={{ background: 'white', borderRadius: '24px', overflow: 'hidden', border: '1px solid #ffdeeb', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+    <div style={{ background: 'linear-gradient(135deg, #fffef7 0%, #fff4f8 100%)', borderRadius: '24px', overflow: 'hidden', border: '1px solid #ffdeeb', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
       <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 900, color: '#333', whiteSpace: 'nowrap' }}>
           <Clock color={PRIMARY_PINK} /> 꼭

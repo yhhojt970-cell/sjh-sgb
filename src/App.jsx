@@ -124,8 +124,11 @@ export default function App() {
 
   const user = useMemo(() => {
     if (!profile) return null
-    const mappedName = ACCOUNTS[profile.loginId]?.name || profile.name
-    return mappedName ? { id: mappedName, role: profile.role } : null
+    const account = ACCOUNTS[profile.loginId] || null
+    const mappedName = account?.name || profile.name
+    const resolvedRole = profile.role || account?.role || 'child'
+    const loginId = profile.loginId || ACCOUNT_NAME_ALIASES[profile.name] || ''
+    return mappedName ? { id: mappedName, role: resolvedRole, loginId } : null
   }, [profile])
 
   const handleLogin = async () => {
