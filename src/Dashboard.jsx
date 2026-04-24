@@ -85,6 +85,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     () => Object.entries(allUsers).filter(([, info]) => info?.role === 'child').map(([id]) => id),
     [allUsers]
   )
+  const childOwnKidId = useMemo(() => {
+    if (isAdmin) return ''
+    if (user?.loginId && kidsList.includes(user.loginId)) return user.loginId
+    const matched = kidsList.find((id) => {
+      const info = allUsers[id] || {}
+      return info.name === user?.id || info.displayName === user?.id
+    })
+    return matched || ''
+  }, [isAdmin, user?.loginId, user?.id, kidsList, allUsers])
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768)
@@ -93,12 +102,20 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [])
 
   useEffect(() => {
-    if (!activeKidId && kidsList.length > 0) setActiveKidId(kidsList[0])
-  }, [activeKidId, kidsList])
+    if (isAdmin) {
+      if (!activeKidId && kidsList.length > 0) setActiveKidId(kidsList[0])
+      return
+    }
+    if (childOwnKidId && activeKidId !== childOwnKidId) setActiveKidId(childOwnKidId)
+  }, [isAdmin, activeKidId, kidsList, childOwnKidId])
 
   useEffect(() => {
-    if (activeKidId && !kidsList.includes(activeKidId)) setActiveKidId(kidsList[0] || '')
-  }, [activeKidId, kidsList])
+    if (isAdmin) {
+      if (activeKidId && !kidsList.includes(activeKidId)) setActiveKidId(kidsList[0] || '')
+      return
+    }
+    if (childOwnKidId && activeKidId !== childOwnKidId) setActiveKidId(childOwnKidId)
+  }, [isAdmin, activeKidId, kidsList, childOwnKidId])
 
   useEffect(() => {
     if (!activeKidId) return
@@ -478,13 +495,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
-            {kidsList.map((id) => (
-              <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>
-                {getFullName(id)}
-              </button>
-            ))}
-          </div>
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+              {kidsList.map((id) => (
+                <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>
+                  {getFullName(id)}
+                </button>
+              ))}
+            </div>
+          )}
         </header>
 
         <div style={{ ...glassStyle, borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px' }}>
