@@ -298,7 +298,7 @@ export function SubjectPalette({
               canEditName
               canEditColor={isAdmin}
               canEditCoins={isAdmin}
-              canDelete={isAdmin}
+              canDelete
             />
           ))}
         </div>
