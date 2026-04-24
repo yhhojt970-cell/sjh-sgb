@@ -79,6 +79,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showClassManager, setShowClassManager] = useState(false)
   const [showCoinLedger, setShowCoinLedger] = useState(false)
   const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
+  const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
+  const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50 })
   const [newEssential, setNewEssential] = useState('')
@@ -278,6 +280,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [tasks, selectedDate])
 
+  const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
+
   const allowanceSummary = useMemo(() => {
     const totalIncome = allowanceEntries
       .filter((entry) => entry.type === 'income')
@@ -306,6 +310,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     () => messages.filter((message) => message.reply && !message.replyReadByAdmin).length,
     [messages]
   )
+
+  const coinChangeLogsForView = useMemo(() => {
+    if (isAdmin) return coinLogs
+    const info = allUsers[activeKidId] || {}
+    const aliases = new Set([activeKidId, info.loginId, info.name, info.displayName].filter(Boolean))
+    return coinLogs.filter((log) => aliases.has(log.kidId))
+  }, [isAdmin, coinLogs, activeKidId, allUsers])
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
 
@@ -506,6 +517,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   useEffect(() => {
     if (!showAllowanceBook) setShowAllAllowanceEntries(false)
   }, [showAllowanceBook])
+
+  useEffect(() => {
+    if (!showCoinLedger) {
+      setShowAllCoinEntries(false)
+      setShowAllCoinLogs(false)
+    }
+  }, [showCoinLedger])
 
   const addTaskFromPalette = async (hour, subject) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
@@ -876,19 +894,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                               <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
                                 <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
                                 <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                                  {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+                                  {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
                                 </div>
                                 <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
                                   <button
                                     onClick={async () => {
                                       const nextName = prompt('수업 이름', task.name || '')
                                       if (!nextName) return
+                                      const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
+                                      const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
+                                      if (weekdayRaw === null) return
                                       const nextStart = prompt('시작 시간 (HH:mm)', task.startTime || '07:00')
                                       if (!nextStart) return
                                       const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
                                       if (Number.isNaN(nextDuration) || nextDuration <= 0) return
+                                      const parsedWeekday = parseInt(weekdayRaw, 10)
+                                      const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
                                       await updateFixedClassTask(kidId, task.id, {
                                         name: nextName.trim(),
+                                        weekday: nextWeekday,
                                         startTime: nextStart,
                                         duration: nextDuration,
                                         expectedEndTime: buildExpectedEndTime(nextStart, nextDuration)
@@ -940,15 +964,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           <div className="modal-overlay" onClick={() => setShowGoals(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '30px', maxWidth: isMobile ? '95%' : '450px', width: '100%', maxHeight: isMobile ? '88vh' : '92vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>코인/꼭 관리</h2>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>보상/꼭 관리</h2>
                 <button onClick={() => setShowGoals(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={24} /></button>
               </div>
-              <div style={{ background: LIGHT_PINK, padding: '20px', borderRadius: '18px', textAlign: 'center', marginBottom: '25px' }}>
+              <div style={{ background: LIGHT_PINK, padding: '20px', borderRadius: '18px', textAlign: 'center', marginBottom: '25px', display: 'none' }}>
                 <div style={{ fontSize: '14px', color: PRIMARY_PINK, fontWeight: 'bold', marginBottom: '5px' }}>현재 코인</div>
                 <strong style={{ fontSize: '34px' }}>{availableCoins}</strong>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '25px' }}>
+              <div style={{ display: 'none', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '25px' }}>
                 <div style={{ background: '#fff7fb', border: '1px solid #ffd9e5', borderRadius: '16px', padding: '14px' }}>
                   <div style={{ fontSize: '12px', color: PRIMARY_PINK, fontWeight: 'bold', marginBottom: '6px' }}>이번 주 리포트</div>
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#333' }}>{weekMonthReport.weekCoins}</div>
@@ -961,7 +985,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
 
-              <div style={{ marginBottom: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: isMobile ? '12px' : '14px' }}>
+              <div style={{ marginBottom: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: isMobile ? '12px' : '14px', display: 'none' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900 }}>용돈기입장</h3>
                   <span style={{ fontSize: '11px', color: '#666' }}>{getFullName(activeKidId)} 전용</span>
@@ -1014,7 +1038,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
 
-              {isAdmin && (
+              {false && isAdmin && (
                 <div style={{ marginBottom: '20px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 900, marginBottom: '8px', color: '#666' }}>코인 변경 로그</h3>
                   <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
@@ -1148,13 +1172,35 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <button onClick={() => setShowCoinLedger(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+                <div style={{ background: '#fff7db', border: '1px solid #ffd8a8', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#a16207' }}>현재 코인</div>
+                  <div style={{ fontWeight: 900, color: '#a16207' }}>{availableCoins}</div>
+                </div>
+                <div style={{ background: '#fff7fb', border: '1px solid #ffd9e5', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#be185d' }}>이번 주</div>
+                  <div style={{ fontWeight: 900, color: '#be185d' }}>{weekMonthReport.weekCoins}</div>
+                </div>
+                <div style={{ background: '#fffdf3', border: '1px solid #ffe8b1', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#b45309' }}>이번 달</div>
+                  <div style={{ fontWeight: 900, color: '#b45309' }}>{weekMonthReport.monthCoins}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인 획득 내역</h3>
+                <button onClick={() => setShowAllCoinEntries((prev) => !prev)} style={{ border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  {showAllCoinEntries ? '접기' : '더보기'}
+                </button>
+              </div>
+
               {isAdmin ? (
                 <div style={{ display: 'grid', gap: '12px' }}>
                   {kidsList.map((kidId) => (
                     <div key={kidId} style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '10px' }}>
                       <div style={{ fontWeight: 900, marginBottom: '8px' }}>{getFullName(kidId)}</div>
                       <div style={{ display: 'grid', gap: '6px' }}>
-                        {(coinLedgerByKid[kidId] || []).map((entry) => (
+                        {(showAllCoinEntries ? (coinLedgerByKid[kidId] || []) : (coinLedgerByKid[kidId] || []).slice(0, 4)).map((entry) => (
                           <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '6px 8px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                             <span>{entry.date} · {entry.title}</span>
                             <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
@@ -1167,7 +1213,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: '6px' }}>
-                  {(coinLedgerByKid[activeKidId] || []).map((entry) => (
+                  {(showAllCoinEntries ? (coinLedgerByKid[activeKidId] || []) : (coinLedgerByKid[activeKidId] || []).slice(0, 6)).map((entry) => (
                     <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                       <span>{entry.date} · {entry.title}</span>
                       <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
@@ -1176,6 +1222,21 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   {(coinLedgerByKid[activeKidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 코인 획득 내역이 없어요.</div>}
                 </div>
               )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', marginBottom: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인 변경 로그</h3>
+                <button onClick={() => setShowAllCoinLogs((prev) => !prev)} style={{ border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  {showAllCoinLogs ? '접기' : '더보기'}
+                </button>
+              </div>
+              <div style={{ display: 'grid', gap: '6px' }}>
+                {(showAllCoinLogs ? coinChangeLogsForView.slice().reverse() : coinChangeLogsForView.slice().reverse().slice(0, 8)).map((log) => (
+                  <div key={log.id} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 10px', fontSize: '12px' }}>
+                    <div style={{ color: '#999', fontSize: '11px', marginBottom: '2px' }}>{log.createdAtLabel || log.date}</div>
+                    <div style={{ fontWeight: 700 }}>{getFullName(log.kidId)} · {log.subjectName} · {log.beforeCoins} → {log.afterCoins}</div>
+                  </div>
+                ))}
+                {coinChangeLogsForView.length === 0 ? <div style={{ fontSize: '12px', color: '#999' }}>변경 로그가 없어요.</div> : null}
+              </div>
             </div>
           </div>
         )}
