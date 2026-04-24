@@ -503,6 +503,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     loadAllKidTasksForAdmin().catch(console.error)
   }, [isAdmin, showPalette, kidsList.join('|')])
 
+  useEffect(() => {
+    if (!showAllowanceBook) setShowAllAllowanceEntries(false)
+  }, [showAllowanceBook])
+
   const addTaskFromPalette = async (hour, subject) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
     const newTask = {
@@ -1070,6 +1074,72 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         )}
 
+        {showAllowanceBook && (
+          <div className="modal-overlay" onClick={() => setShowAllowanceBook(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: isMobile ? '95%' : '520px', width: '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>용돈기입장</h2>
+                <button onClick={() => setShowAllowanceBook(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+              </div>
+
+              <div style={{ display: 'grid', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input className="input-field" type="date" value={newAllowance.date} onChange={(e) => setNewAllowance({ ...newAllowance, date: e.target.value })} />
+                  <select className="input-field" value={newAllowance.type} onChange={(e) => setNewAllowance({ ...newAllowance, type: e.target.value })}>
+                    <option value="income">받음(+)</option>
+                    <option value="expense">씀(-)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input className="input-field" placeholder="내용 (예: 간식)" value={newAllowance.title} onChange={(e) => setNewAllowance({ ...newAllowance, title: e.target.value })} />
+                  <input className="input-field" type="number" min="0" placeholder="금액" value={newAllowance.amount} onChange={(e) => setNewAllowance({ ...newAllowance, amount: e.target.value })} />
+                </div>
+                <input className="input-field" placeholder="메모 (선택)" value={newAllowance.memo} onChange={(e) => setNewAllowance({ ...newAllowance, memo: e.target.value })} />
+                <button className="btn-primary" onClick={handleAddAllowance} style={{ width: '100%' }}>기록 추가</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#166534' }}>받은 금액</div>
+                  <div style={{ fontWeight: 900, color: '#166534' }}>+{allowanceSummary.totalIncome}</div>
+                </div>
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#991b1b' }}>쓴 금액</div>
+                  <div style={{ fontWeight: 900, color: '#991b1b' }}>-{allowanceSummary.totalExpense}</div>
+                </div>
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '8px' }}>
+                  <div style={{ fontSize: '11px', color: '#1d4ed8' }}>잔액</div>
+                  <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{allowanceSummary.balance}</div>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+                {(showAllAllowanceEntries ? allowanceEntries.slice().reverse() : allowanceEntries.slice().reverse().slice(0, 5)).map((entry) => (
+                  <div key={entry.id} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{entry.amount})</div>
+                      <div style={{ color: '#999' }}>{entry.date}{entry.memo ? ` · ${entry.memo}` : ''}</div>
+                    </div>
+                    <button onClick={() => handleDeleteAllowance(entry.id)} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}>
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                ))}
+                {allowanceEntries.length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 기록이 없어요.</div>}
+              </div>
+
+              {allowanceEntries.length > 5 ? (
+                <button
+                  onClick={() => setShowAllAllowanceEntries((prev) => !prev)}
+                  style={{ marginTop: '10px', width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '10px', padding: '8px 10px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  {showAllAllowanceEntries ? '접기' : `더보기 (${allowanceEntries.length - 5}개)`}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        )}
+
         {showCoinLedger && (
           <div className="modal-overlay" onClick={() => setShowCoinLedger(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: isMobile ? '95%' : '520px', width: '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto' }}>
@@ -1136,7 +1206,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         {showSettings && (
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '30px', maxWidth: '400px', width: '95%' }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '30px', maxWidth: '560px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>설정</h2>
                 <button onClick={() => setShowSettings(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
@@ -1147,6 +1217,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <input className="input-field" type="password" placeholder="새 비밀번호 확인" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: '8px' }} />
                 <button onClick={handleChangePassword} className="btn-primary" style={{ width: '100%' }}>비밀번호 변경</button>
               </div>
+              {isAdmin ? (
+                <div style={{ background: '#fff7fa', border: '1px solid #ffd6e0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>엑셀 붙여넣기 등록 (고정수업)</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분</div>
+                  <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '120px', marginBottom: '8px' }} />
+                  <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+                </div>
+              ) : null}
               <button onClick={onLogout} className="btn-primary" style={{ width: '100%', background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
             </div>
           </div>
