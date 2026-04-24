@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import { addDays, format, getDay, isSameDay, startOfWeek, subDays } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { updatePassword } from 'firebase/auth'
 import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth } from './firebase'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -54,7 +56,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [activeKidId, setActiveKidId] = useState('')
   const [resolvedKidDocId, setResolvedKidDocId] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date())
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 900)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const [tasks, setTasks] = useState([])
@@ -78,6 +80,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [newMessage, setNewMessage] = useState('')
   const [messageTarget, setMessageTarget] = useState('')
   const [replyText, setReplyText] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [bulkInput, setBulkInput] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
 
@@ -96,7 +100,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [isAdmin, user?.loginId, user?.id, kidsList, allUsers])
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 768)
+    const onResize = () => setIsMobile(window.innerWidth <= 900)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
@@ -292,6 +296,32 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setShowSurprise(false)
   }
 
+  const handleChangePassword = async () => {
+    const next = String(newPassword || '')
+    const confirm = String(confirmPassword || '')
+    if (next.length < 6) {
+      alert('새 비밀번호는 6자 이상이어야 해요.')
+      return
+    }
+    if (next !== confirm) {
+      alert('비밀번호 확인이 일치하지 않아요.')
+      return
+    }
+    if (!auth.currentUser) {
+      alert('로그인 정보를 다시 확인해 주세요.')
+      return
+    }
+    try {
+      await updatePassword(auth.currentUser, next)
+      setNewPassword('')
+      setConfirmPassword('')
+      alert('비밀번호가 변경되었어요.')
+    } catch (error) {
+      console.error(error)
+      alert('비밀번호 변경에 실패했어요. 다시 로그인 후 시도해 주세요.')
+    }
+  }
+
   useEffect(() => {
     if (!isAdmin || !showFamilyManager || unreadRepliesForAdmin === 0 || !isCloud) return
     const run = async () => {
@@ -472,6 +502,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     </span>
                   )}
                 </h1>
+                {isAdmin && (
+                  <div style={{ marginTop: '10px', display: 'inline-flex', background: '#f1f5f9', borderRadius: '14px', padding: '4px', border: '1px solid #e2e8f0' }}>
+                    {kidsList.map((id) => (
+                      <button
+                        key={id}
+                        onClick={() => setActiveKidId(id)}
+                        style={{
+                          border: 'none',
+                          background: activeKidId === id ? 'white' : 'transparent',
+                          color: activeKidId === id ? PRIMARY_PINK : '#64748b',
+                          fontWeight: 900,
+                          fontSize: isMobile ? '18px' : '14px',
+                          borderRadius: '10px',
+                          padding: isMobile ? '8px 18px' : '7px 16px',
+                          boxShadow: activeKidId === id ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {getFullName(id)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -495,15 +548,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
           </div>
 
-          {isAdmin && (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '15px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none' }}>
-              {kidsList.map((id) => (
-                <button key={id} onClick={() => setActiveKidId(id)} style={{ flexShrink: 0, padding: isMobile ? '8px 18px' : '6px 16px', borderRadius: '12px', border: activeKidId === id ? `2px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', background: activeKidId === id ? LIGHT_PINK : 'white', fontSize: isMobile ? '14px' : '13px', fontWeight: 'bold', color: activeKidId === id ? PRIMARY_PINK : '#666' }}>
-                  {getFullName(id)}
-                </button>
-              ))}
-            </div>
-          )}
         </header>
 
         <div style={{ ...glassStyle, borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px' }}>
@@ -655,7 +699,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         {showGoals && (
           <div className="modal-overlay" onClick={() => setShowGoals(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '30px', maxWidth: isMobile ? '95%' : '450px', width: '100%' }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '30px', maxWidth: isMobile ? '95%' : '450px', width: '100%', maxHeight: isMobile ? '88vh' : '92vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>코인/꼭 관리</h2>
                 <button onClick={() => setShowGoals(false)} style={{ border: 'none', background: 'none' }}><CloseIcon size={24} /></button>
@@ -768,6 +812,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>설정</h2>
                 <button onClick={() => setShowSettings(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>비밀번호 변경</div>
+                <input className="input-field" type="password" placeholder="새 비밀번호 (6자 이상)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ marginBottom: '8px' }} />
+                <input className="input-field" type="password" placeholder="새 비밀번호 확인" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: '8px' }} />
+                <button onClick={handleChangePassword} className="btn-primary" style={{ width: '100%' }}>비밀번호 변경</button>
               </div>
               <button onClick={onLogout} className="btn-primary" style={{ width: '100%', background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
             </div>

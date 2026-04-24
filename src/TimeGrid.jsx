@@ -5,7 +5,7 @@ import { Clock, Edit3, Heart, MessageSquare, Play, RotateCcw, Save, Sparkles, St
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
-const HOURS = Array.from({ length: 18 }, (_, index) => index + 7)
+const BASE_HOURS = Array.from({ length: 18 }, (_, index) => index + 7)
 
 const buildExpectedEndTime = (startTime, duration = 50) => {
   const [hour, minute] = String(startTime || '00:00').split(':').map(Number)
@@ -343,6 +343,16 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
 }
 
 export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
+  const hours = useMemo(() => {
+    const taskHours = (tasks || [])
+      .map((task) => {
+        const hour = parseInt(String(task?.startTime || '').split(':')[0], 10)
+        return Number.isNaN(hour) ? null : Math.max(0, Math.min(23, hour))
+      })
+      .filter((hour) => hour !== null)
+    return [...new Set([...BASE_HOURS, ...taskHours])].sort((a, b) => a - b)
+  }, [tasks])
+
   return (
     <div style={{ background: 'linear-gradient(135deg, #fffef7 0%, #fff4f8 100%)', borderRadius: '24px', overflow: 'hidden', border: '1px solid #ffdeeb', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
       <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -363,7 +373,7 @@ export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, i
       </div>
 
       <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
-        {HOURS.map((hour) => (
+        {hours.map((hour) => (
           <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} />
         ))}
       </div>
