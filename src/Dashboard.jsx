@@ -222,8 +222,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     return aliases.includes(kidId)
   }
 
-  const todayMessagesForKid = messages.filter((message) => message.date === todayStr && isMessageForActiveKid(message.kidId))
-  const unreadMessage = todayMessagesForKid.find((message) => !message.read)
+  const messagesForKid = messages.filter((message) => isMessageForActiveKid(message.kidId))
+  const todayMessagesForKid = messagesForKid.filter((message) => message.date === todayStr)
+  const unreadMessage = messagesForKid.find((message) => !message.read)
   const hasReadToday = todayMessagesForKid.some((message) => message.read)
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
