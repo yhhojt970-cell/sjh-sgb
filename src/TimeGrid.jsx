@@ -269,7 +269,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
             {actualStart && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#42c99b', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>}
             {task.completed && (
               <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
-                {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration || '-'}분)` : '✨ 완료'}
+                {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration ?? '-'}분)` : '✨ 완료'}
               </div>
             )}
           </>
