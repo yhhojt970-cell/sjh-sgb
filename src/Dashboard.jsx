@@ -376,28 +376,47 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
               <div>
-                <h1 style={{ fontSize: isMobile ? '18px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h1 style={{ fontSize: isMobile ? '18px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                   {getFullName(activeKidId)}
-                  <span
-                    style={{
-                      borderRadius: '14px',
-                      padding: isMobile ? '4px 9px' : '5px 10px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
-                      border: '1px solid #ffd8a8',
-                      boxShadow: '0 4px 10px rgba(255,157,0,0.14)'
-                    }}
-                  >
-                    <span style={{ width: isMobile ? '24px' : '26px', height: isMobile ? '24px' : '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Coins size={isMobile ? 13 : 14} color="white" />
+                  {isMobile ? (
+                    <span
+                      style={{
+                        borderRadius: '999px',
+                        padding: '3px 8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
+                        border: '1px solid #ffd8a8'
+                      }}
+                    >
+                      <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Coins size={11} color="white" />
+                      </span>
+                      <strong style={{ color: '#c96d00', fontSize: '12px', lineHeight: 1 }}>{availableCoins}</strong>
                     </span>
-                    <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                      <strong style={{ color: '#c96d00', fontSize: isMobile ? '14px' : '15px' }}>{availableCoins} 코인</strong>
-                      {!isMobile && <span style={{ fontSize: '10px', color: '#9a7a3a', fontWeight: 700 }}>{nextRewardInfo.label}</span>}
+                  ) : (
+                    <span
+                      style={{
+                        borderRadius: '14px',
+                        padding: '5px 10px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
+                        border: '1px solid #ffd8a8',
+                        boxShadow: '0 4px 10px rgba(255,157,0,0.14)'
+                      }}
+                    >
+                      <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Coins size={14} color="white" />
+                      </span>
+                      <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                        <strong style={{ color: '#c96d00', fontSize: '15px' }}>{availableCoins} 코인</strong>
+                        <span style={{ fontSize: '10px', color: '#9a7a3a', fontWeight: 700 }}>{nextRewardInfo.label}</span>
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </h1>
               </div>
             </div>

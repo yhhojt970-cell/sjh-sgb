@@ -258,11 +258,22 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
 
       <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
         {task.type === 'class' ? (
-          <>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
-            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
-          </>
+          <div style={{ display: 'grid', gap: '6px', width: '100%', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : (isAdmin ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))') }}>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>완료</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>휴강</button>
+            <button onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }} style={{ padding: '8px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>결석</button>
+            {isAdmin && (
+              <button
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
+                }}
+                style={{ padding: '8px', borderRadius: '10px', background: '#fff', color: '#666', border: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}
+              >
+                초기화
+              </button>
+            )}
+          </div>
         ) : (
           <>
             {!task.completed && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
