@@ -477,7 +477,37 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         </div>
 
-        <main style={{ width: '100%' }}>
+        <main style={{ width: '100%', display: isAdmin ? 'block' : 'flex', gap: '12px', alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
+          {!isAdmin && (
+            <div
+              style={{
+                ...glassStyle,
+                width: isMobile ? '100%' : '310px',
+                flexShrink: 0,
+                borderRadius: '24px',
+                overflow: 'hidden',
+                position: isMobile ? 'relative' : 'sticky',
+                top: isMobile ? 'auto' : '20px'
+              }}
+            >
+              <SubjectPalette
+                cloud={cloud}
+                activeKidId={activeKidId}
+                kids={kidsList}
+                kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
+                onSubjectsChange={() => {}}
+                onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
+                  if (!isAdmin || beforeCoins === afterCoins) return
+                  await appendSystemLog({
+                    kidId,
+                    text: `코인 변경: ${getFullName(kidId)} · ${subjectName} (${beforeCoins} → ${afterCoins})`
+                  })
+                }}
+                isAdmin={isAdmin}
+                allowDrag={!isMobile}
+              />
+            </div>
+          )}
           {isAdmin && (
             <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 950 }}>
               <button onClick={() => setShowPalette((prev) => !prev)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255,77,109,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -486,7 +516,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
           )}
 
-          <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden' }}>
+          <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden', flex: 1, width: '100%' }}>
             <TimeGrid
               tasks={todayTasks}
               isAdmin={isAdmin}
@@ -539,7 +569,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         )}
 
-        {showPalette && (
+        {showPalette && isAdmin && (
           <div
             className="glass"
             style={{
@@ -574,7 +604,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 })
               }}
               isAdmin={isAdmin}
-              allowDrag={!isMobile && isAdmin}
+              allowDrag={!isMobile && !isAdmin}
             />
           </div>
         )}
