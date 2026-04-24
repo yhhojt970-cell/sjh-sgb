@@ -59,6 +59,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const [tasks, setTasks] = useState([])
   const [messages, setMessages] = useState([])
+  const [coinLogs, setCoinLogs] = useState([])
   const [studyApps, setStudyApps] = useState([])
   const [essentials, setEssentials] = useState([])
   const [rewards, setRewards] = useState([])
@@ -154,9 +155,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       doc(cloud.db, 'households', cloud.householdId, 'meta', 'apps'),
       (snap) => setStudyApps(snap.exists() ? snap.data().apps || [] : [])
     )
+    const unsubCoinLogs = onSnapshot(
+      doc(cloud.db, 'households', cloud.householdId, 'meta', 'coinLogs'),
+      (snap) => setCoinLogs(snap.exists() ? snap.data().logs || [] : [])
+    )
     return () => {
       unsubMessages()
       unsubApps()
+      unsubCoinLogs()
     }
   }, [isCloud, cloud?.db, cloud?.householdId])
 
@@ -174,16 +180,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', docId), payload, { merge: true })
   }
 
-  const appendSystemLog = async ({ kidId, text }) => {
-    if (!isCloud || !text) return
+  const appendCoinLog = async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
+    if (!isCloud) return
     const now = new Date()
-    await mergeMetaDoc('messages', {
-      messages: arrayUnion({
+    await mergeMetaDoc('coinLogs', {
+      logs: arrayUnion({
         id: Date.now() + Math.floor(Math.random() * 1000),
-        kind: 'system',
         kidId,
-        text,
-        read: true,
+        subjectName,
+        beforeCoins,
+        afterCoins,
         date: format(now, 'yyyy-MM-dd'),
         createdAt: now.toISOString(),
         createdAtLabel: format(now, 'yyyy-MM-dd HH:mm')
@@ -518,16 +524,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 kids={kidsList}
                 kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
                 onSubjectsChange={() => {}}
-                onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
-                  if (!isAdmin || beforeCoins === afterCoins) return
-                  await appendSystemLog({
-                    kidId,
-                    text: `코인 변경: ${getFullName(kidId)} · ${subjectName} (${beforeCoins} → ${afterCoins})`
-                  })
-                }}
-                isAdmin={isAdmin}
-                allowDrag={!isMobile}
-              />
+              onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
+                if (!isAdmin || beforeCoins === afterCoins) return
+                await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
+              }}
+              isAdmin={isAdmin}
+              allowDrag={!isMobile}
+            />
             </div>
           )}
           {isAdmin && (
@@ -655,6 +658,23 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>{weekMonthReport.monthCount}개 완료</div>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div style={{ marginBottom: '20px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 900, marginBottom: '8px', color: '#666' }}>코인 변경 로그</h3>
+                  <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
+                    {coinLogs.slice().reverse().map((log) => (
+                      <div key={log.id} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px 10px', fontSize: '12px' }}>
+                        <div style={{ color: '#999', marginBottom: '2px' }}>{log.createdAtLabel || log.date}</div>
+                        <div style={{ fontWeight: 700 }}>
+                          {getFullName(log.kidId)} · {log.subjectName} · {log.beforeCoins} → {log.afterCoins}
+                        </div>
+                      </div>
+                    ))}
+                    {coinLogs.length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 변경 로그가 없습니다.</div>}
+                  </div>
+                </div>
+              )}
 
               {isAdmin && (
                 <div style={{ display: 'grid', gap: '20px', marginBottom: '25px' }}>
@@ -787,11 +807,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
               </div>
               <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gap: '8px' }}>
-                {messages.slice().reverse().map((message) => (
+                {messages.filter((message) => message.kind !== 'system').slice().reverse().map((message) => (
                   <div key={message.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '12px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <strong>{message.kind === 'system' ? `시스템 · ${getFullName(message.kidId)}` : getFullName(message.kidId)}</strong>
-                      <span>{message.kind === 'system' ? '로그' : (message.read ? '읽음' : '안 읽음')}</span>
+                      <strong>{getFullName(message.kidId)}</strong>
+                      <span>{message.read ? '읽음' : '안 읽음'}</span>
                     </div>
                     <div style={{ color: '#999', fontSize: '11px', marginBottom: '4px' }}>
                       {message.createdAtLabel || (message.createdAt ? format(new Date(message.createdAt), 'yyyy-MM-dd HH:mm') : `${message.date || ''}`)}
