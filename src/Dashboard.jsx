@@ -260,8 +260,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     [tasks, selectedDate, todayStr]
   )
 
+  const getTaskCoins = (task) => Number(task.coins || (task.type === 'study' ? 1 : 0))
+
   const availableCoins = useMemo(
-    () => tasks.filter((task) => task.completed && task.type !== 'class').reduce((sum, task) => sum + (task.coins || (task.type === 'study' ? 1 : 0)), 0) - spentCoins,
+    () => tasks.filter((task) => task.completed && task.type !== 'class').reduce((sum, task) => sum + getTaskCoins(task), 0) - spentCoins,
     [tasks, spentCoins]
   )
 
@@ -279,9 +281,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === month
     })
     return {
-      weekCoins: weekTasks.reduce((sum, task) => sum + (task.coins || 1), 0),
+      weekCoins: weekTasks.reduce((sum, task) => sum + getTaskCoins(task), 0),
       weekCount: weekTasks.length,
-      monthCoins: monthTasks.reduce((sum, task) => sum + (task.coins || 1), 0),
+      monthCoins: monthTasks.reduce((sum, task) => sum + getTaskCoins(task), 0),
       monthCount: monthTasks.length
     }
   }, [tasks, selectedDate])
@@ -327,12 +329,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const buildCoinEntriesFromTasks = (taskList = []) => {
     return (taskList || [])
-      .filter((task) => task.completed && task.type !== 'class' && Number(task.coins || 0) > 0)
+      .filter((task) => task.completed && task.type !== 'class' && getTaskCoins(task) > 0)
       .map((task) => ({
         id: task.id || `${task.name}-${task.date || ''}-${task.startTime || ''}`,
         date: task.date || '',
         title: task.name || '학습',
-        coins: Number(task.coins || 0)
+        coins: getTaskCoins(task)
       }))
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
   }
@@ -349,18 +351,23 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     for (const kidId of targetKids) {
       const info = allUsers[kidId] || {}
       const aliases = [...new Set([kidId, info.loginId, info.name, info.displayName].filter(Boolean))]
-      let foundTasks = []
+      const mergedTasks = []
+      const seenTaskKeys = new Set()
       for (const alias of aliases) {
         const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', alias))
         if (snap.exists()) {
           const data = snap.data() || {}
           if (Array.isArray(data.tasks)) {
-            foundTasks = data.tasks
-            if (data.tasks.length > 0) break
+            data.tasks.forEach((task) => {
+              const key = String(task?.id || `${task?.date || ''}-${task?.name || ''}-${task?.startTime || ''}-${task?.expectedEndTime || ''}`)
+              if (seenTaskKeys.has(key)) return
+              seenTaskKeys.add(key)
+              mergedTasks.push(task)
+            })
           }
         }
       }
-      result[kidId] = buildCoinEntriesFromTasks(foundTasks)
+      result[kidId] = buildCoinEntriesFromTasks(mergedTasks)
     }
 
     setCoinLedgerByKid(result)
