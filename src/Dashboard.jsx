@@ -66,6 +66,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [studyApps, setStudyApps] = useState([])
   const [essentials, setEssentials] = useState([])
   const [rewards, setRewards] = useState([])
+  const [sharedRewards, setSharedRewards] = useState([])
   const [spentCoins, setSpentCoins] = useState(0)
   const [allowanceEntries, setAllowanceEntries] = useState([])
 
@@ -82,7 +83,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
   const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
 
-  const [newReward, setNewReward] = useState({ text: '', coins: 50 })
+  const [newReward, setNewReward] = useState({ text: '', coins: 50, scope: 'shared', kidId: '' })
   const [newEssential, setNewEssential] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [messageTarget, setMessageTarget] = useState('')
@@ -199,10 +200,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       doc(cloud.db, 'households', cloud.householdId, 'meta', 'coinLogs'),
       (snap) => setCoinLogs(snap.exists() ? snap.data().logs || [] : [])
     )
+    const unsubSharedRewards = onSnapshot(
+      doc(cloud.db, 'households', cloud.householdId, 'meta', 'sharedRewards'),
+      (snap) => setSharedRewards(snap.exists() ? snap.data().rewards || [] : [])
+    )
     return () => {
       unsubMessages()
       unsubApps()
       unsubCoinLogs()
+      unsubSharedRewards()
     }
   }, [isCloud, cloud?.db, cloud?.householdId])
 
@@ -312,17 +318,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   )
 
   const coinChangeLogsForView = useMemo(() => {
-    if (isAdmin) return coinLogs
     const info = allUsers[activeKidId] || {}
     const aliases = new Set([activeKidId, info.loginId, info.name, info.displayName].filter(Boolean))
     return coinLogs.filter((log) => aliases.has(log.kidId))
-  }, [isAdmin, coinLogs, activeKidId, allUsers])
+  }, [coinLogs, activeKidId, allUsers])
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
 
   const buildCoinEntriesFromTasks = (taskList = []) => {
     return (taskList || [])
-      .filter((task) => task.completed && Number(task.coins || 0) > 0)
+      .filter((task) => task.completed && task.type !== 'class' && Number(task.coins || 0) > 0)
       .map((task) => ({
         id: task.id || `${task.name}-${task.date || ''}-${task.startTime || ''}`,
         date: task.date || '',
@@ -338,7 +343,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       return
     }
 
-    const targetKids = isAdmin ? kidsList : [activeKidId]
+    const targetKids = [activeKidId].filter(Boolean)
     const result = {}
 
     for (const kidId of targetKids) {
@@ -500,6 +505,82 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     await persistKidState({ allowanceEntries: next })
   }
 
+  const getKidDocIdForWrite = async (kidId) => {
+    const aliases = getKidAliases(kidId)
+    if (!isCloud) return aliases[0] || kidId
+    for (const alias of aliases) {
+      const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', alias))
+      if (snap.exists()) return alias
+    }
+    return aliases[0] || kidId
+  }
+
+  const addReward = async () => {
+    const text = String(newReward.text || '').trim()
+    const coins = Math.max(0, Number(newReward.coins || 0))
+    const scope = newReward.scope === 'kid' ? 'kid' : 'shared'
+    if (!text || coins <= 0) return
+
+    const reward = {
+      id: `reward-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text,
+      coins,
+      scope,
+      kidId: scope === 'kid' ? (newReward.kidId || activeKidId) : null
+    }
+
+    if (scope === 'shared') {
+      const next = [...sharedRewards, reward]
+      setSharedRewards(next)
+      await mergeMetaDoc('sharedRewards', { rewards: next, updatedAt: serverTimestamp() })
+    } else {
+      const targetKidId = reward.kidId || activeKidId
+      const targetDocId = await getKidDocIdForWrite(targetKidId)
+      const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+      const kidData = snap.exists() ? snap.data() : {}
+      const currentRewards = Array.isArray(kidData?.rewards) ? kidData.rewards : []
+      const next = [...currentRewards, reward]
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+        { rewards: next, updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+      if (targetKidId === activeKidId || targetDocId === resolvedKidDocId) setRewards(next)
+    }
+
+    setNewReward({ text: '', coins: 50, scope: 'shared', kidId: '' })
+  }
+
+  const spendRewardForKid = async (reward, kidId) => {
+    const targetDocId = await getKidDocIdForWrite(kidId)
+    const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+    if (!snap.exists()) return
+    const kidData = snap.data() || {}
+    const kidTasks = Array.isArray(kidData.tasks) ? kidData.tasks : []
+    const completedCoins = kidTasks
+      .filter((task) => task.completed && task.type !== 'class')
+      .reduce((sum, task) => sum + Number(task.coins || (task.type === 'study' ? 1 : 0)), 0)
+    const currentSpent = Number(kidData.spentCoins || 0)
+    const currentAvailable = completedCoins - currentSpent
+    if (currentAvailable < reward.coins) {
+      alert(`${getFullName(kidId)}의 코인이 부족해요. (현재 ${currentAvailable})`)
+      return
+    }
+    const nextSpent = currentSpent + reward.coins
+    await setDoc(
+      doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+      { spentCoins: nextSpent, updatedAt: serverTimestamp() },
+      { merge: true }
+    )
+    if (kidId === activeKidId || targetDocId === resolvedKidDocId) setSpentCoins(nextSpent)
+    await appendCoinLog({
+      kidId,
+      subjectName: `보상 지급: ${reward.text}`,
+      beforeCoins: currentAvailable,
+      afterCoins: currentAvailable - reward.coins
+    })
+  }
+
   useEffect(() => {
     if (!isAdmin || !showFamilyManager || unreadRepliesForAdmin === 0 || !isCloud) return
     const run = async () => {
@@ -554,7 +635,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       const cols = line.includes('\t') ? line.split('\t') : line.split(',').map((c) => c.trim())
       if (cols.length < 5) return
 
-      const [kidRaw, dayRaw, subjectRaw, timeRaw, durationRaw] = cols
+      const [kidRaw, dayRaw, subjectRaw, timeRaw, durationRaw, startDateRaw = '', endDateRaw = '', memoRaw = ''] = cols
       const kidId = kidsList.find((id) => {
         const name = getFullName(id)
         return name.includes(kidRaw) || kidRaw.includes(name)
@@ -575,7 +656,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         type: 'class',
         icon: 'Book',
         completed: false,
-        weekday
+        weekday,
+        memo: String(memoRaw || '').trim(),
+        note: String(memoRaw || '').trim(),
+        startDate: String(startDateRaw || '').trim() || null,
+        endDate: String(endDateRaw || '').trim() || null,
+        classStartDate: String(startDateRaw || '').trim() || null,
+        classEndDate: String(endDateRaw || '').trim() || null
       }
       if (!byKid.has(kidId)) byKid.set(kidId, [])
       byKid.get(kidId).push(task)
@@ -608,6 +695,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
     return next
   }, [isAdmin, allTasksByKid, activeKidId, tasks])
+
+  const rewardsForView = useMemo(() => {
+    const kidRewards = (rewards || []).map((reward) => ({
+      ...reward,
+      scope: reward.scope || 'kid',
+      kidId: reward.kidId || activeKidId
+    }))
+    return [...(sharedRewards || []), ...kidRewards]
+  }, [sharedRewards, rewards, activeKidId])
 
   const glassStyle = {
     background: 'rgba(255,255,255,0.7)',
@@ -840,7 +936,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</h2>
                 <button onClick={() => setShowClassManager(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
               </div>
-              <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>형식: 이름[TAB]요일[TAB]과목명[TAB]시간[TAB]분</p>
+              <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>형식: 이름[TAB]요일[TAB]과목명[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</p>
               <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '140px', marginBottom: '10px' }} />
               <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
             </div>
@@ -1062,7 +1158,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                       <input className="input-field" placeholder="보상 이름" value={newReward.text} onChange={(e) => setNewReward({ ...newReward, text: e.target.value })} style={{ flex: 2 }} />
                       <input className="input-field" type="number" placeholder="코인" value={newReward.coins} onChange={(e) => setNewReward({ ...newReward, coins: parseInt(e.target.value, 10) || 0 })} style={{ flex: 1 }} />
-                      <button onClick={() => { if (newReward.text) { const next = [...rewards, { id: Date.now(), ...newReward }]; setRewards(next); persistKidState({ rewards: next }); setNewReward({ text: '', coins: 50 }); } }} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
+                      <button onClick={addReward} className="btn-primary" style={{ padding: '12px' }}><Plus /></button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select className="input-field" value={newReward.scope} onChange={(e) => setNewReward((prev) => ({ ...prev, scope: e.target.value }))}>
+                        <option value="shared">공통</option>
+                        <option value="kid">아이별</option>
+                      </select>
+                      {newReward.scope === 'kid' ? (
+                        <select className="input-field" value={newReward.kidId || activeKidId} onChange={(e) => setNewReward((prev) => ({ ...prev, kidId: e.target.value }))}>
+                          {kidsList.map((id) => <option key={id} value={id}>{getFullName(id)}</option>)}
+                        </select>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
@@ -1084,13 +1191,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               )}
 
               <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'grid', gap: '10px' }}>
-                {rewards.map((reward) => (
+                {rewardsForView.map((reward) => (
                   <div key={reward.id} style={{ padding: '15px', background: availableCoins >= reward.coins ? LIGHT_PINK : '#f8fafc', borderRadius: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: availableCoins >= reward.coins ? `1px solid ${PRIMARY_PINK}` : '1px solid transparent' }}>
                     <div style={{ flex: 1 }}>
                       <strong style={{ fontSize: '16px' }}>{reward.text}</strong>
-                      <div style={{ fontSize: '12px', color: availableCoins >= reward.coins ? PRIMARY_PINK : '#666', fontWeight: 'bold' }}>{reward.coins} 코인</div>
+                      <div style={{ fontSize: '12px', color: availableCoins >= reward.coins ? PRIMARY_PINK : '#666', fontWeight: 'bold' }}>
+                        {reward.coins} 코인 · {reward.scope === 'shared' ? '공통' : getFullName(reward.kidId || activeKidId)}
+                      </div>
                     </div>
-                    {isAdmin && <button onClick={async () => { const next = spentCoins + reward.coins; setSpentCoins(next); await persistKidState({ spentCoins: next }); }} className="btn-primary" style={{ padding: '8px 15px', fontSize: '13px' }}>지급 완료</button>}
+                    {isAdmin ? (
+                      reward.scope === 'shared' ? (
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {kidsList.map((kidId) => (
+                            <button key={`${reward.id}-${kidId}`} onClick={() => spendRewardForKid(reward, kidId)} className="btn-primary" style={{ padding: '8px 10px', fontSize: '12px' }}>
+                              {getFullName(kidId)} 지급
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <button onClick={() => spendRewardForKid(reward, reward.kidId || activeKidId)} className="btn-primary" style={{ padding: '8px 15px', fontSize: '13px' }}>
+                          지급
+                        </button>
+                      )
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1194,34 +1317,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
               </div>
 
-              {isAdmin ? (
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  {kidsList.map((kidId) => (
-                    <div key={kidId} style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '10px' }}>
-                      <div style={{ fontWeight: 900, marginBottom: '8px' }}>{getFullName(kidId)}</div>
-                      <div style={{ display: 'grid', gap: '6px' }}>
-                        {(showAllCoinEntries ? (coinLedgerByKid[kidId] || []) : (coinLedgerByKid[kidId] || []).slice(0, 4)).map((entry) => (
-                          <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '6px 8px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                            <span>{entry.date} · {entry.title}</span>
-                            <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
-                          </div>
-                        ))}
-                        {(coinLedgerByKid[kidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>내역 없음</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: '6px' }}>
-                  {(showAllCoinEntries ? (coinLedgerByKid[activeKidId] || []) : (coinLedgerByKid[activeKidId] || []).slice(0, 6)).map((entry) => (
-                    <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                      <span>{entry.date} · {entry.title}</span>
-                      <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
-                    </div>
-                  ))}
-                  {(coinLedgerByKid[activeKidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 코인 획득 내역이 없어요.</div>}
-                </div>
-              )}
+              <div style={{ display: 'grid', gap: '6px' }}>
+                {(showAllCoinEntries ? (coinLedgerByKid[activeKidId] || []) : (coinLedgerByKid[activeKidId] || []).slice(0, 6)).map((entry) => (
+                  <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span>{entry.date} · {entry.title}</span>
+                    <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
+                  </div>
+                ))}
+                {(coinLedgerByKid[activeKidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 코인 획득 내역이 없어요.</div>}
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', marginBottom: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인 변경 로그</h3>
                 <button onClick={() => setShowAllCoinLogs((prev) => !prev)} style={{ border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
@@ -1281,7 +1385,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               {isAdmin ? (
                 <div style={{ background: '#fff7fa', border: '1px solid #ffd6e0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>엑셀 붙여넣기 등록 (고정수업)</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분</div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</div>
                   <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '120px', marginBottom: '8px' }} />
                   <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
                 </div>
