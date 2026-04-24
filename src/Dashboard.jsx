@@ -11,6 +11,7 @@ import {
   Gift,
   LayoutGrid,
   LogOut,
+  PiggyBank,
   Plus,
   Send,
   Settings,
@@ -71,10 +72,13 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showSettings, setShowSettings] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
   const [showAppLauncher, setShowAppLauncher] = useState(false)
+  const [showAllowanceBook, setShowAllowanceBook] = useState(false)
   const [showSurprise, setShowSurprise] = useState(false)
   const [showFamilyManager, setShowFamilyManager] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
+  const [showCoinLedger, setShowCoinLedger] = useState(false)
+  const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50 })
   const [newEssential, setNewEssential] = useState('')
@@ -92,6 +96,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   })
   const [bulkInput, setBulkInput] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
+  const [coinLedgerByKid, setCoinLedgerByKid] = useState({})
+  const [allTasksByKid, setAllTasksByKid] = useState({})
+  const [fixedSectionOpen, setFixedSectionOpen] = useState(true)
+  const [fixedOpenByKid, setFixedOpenByKid] = useState({})
 
   const kidsList = useMemo(
     () => Object.entries(allUsers).filter(([, info]) => info?.role === 'child').map(([id]) => id),
@@ -284,16 +292,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [allowanceEntries])
 
-  const nextRewardInfo = useMemo(() => {
-    const sorted = [...rewards]
-      .filter((reward) => Number(reward?.coins) > availableCoins)
-      .sort((a, b) => Number(a.coins) - Number(b.coins))
-    const next = sorted[0] || null
-    if (!next) return { label: '선물 교환 가능!', remain: 0 }
-    const remain = Math.max(0, Number(next.coins) - availableCoins)
-    return { label: `${next.text}까지 ${remain}코인`, remain }
-  }, [rewards, availableCoins])
-
   const isMessageForActiveKid = (kidId) => {
     const info = allUsers[activeKidId] || {}
     const aliases = [activeKidId, info.loginId, info.name, info.displayName].filter(Boolean)
@@ -310,6 +308,128 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   )
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
+
+  const buildCoinEntriesFromTasks = (taskList = []) => {
+    return (taskList || [])
+      .filter((task) => task.completed && Number(task.coins || 0) > 0)
+      .map((task) => ({
+        id: task.id || `${task.name}-${task.date || ''}-${task.startTime || ''}`,
+        date: task.date || '',
+        title: task.name || '학습',
+        coins: Number(task.coins || 0)
+      }))
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+  }
+
+  const loadCoinLedger = async () => {
+    if (!isCloud) {
+      setCoinLedgerByKid({ [activeKidId]: buildCoinEntriesFromTasks(tasks) })
+      return
+    }
+
+    const targetKids = isAdmin ? kidsList : [activeKidId]
+    const result = {}
+
+    for (const kidId of targetKids) {
+      const info = allUsers[kidId] || {}
+      const aliases = [...new Set([kidId, info.loginId, info.name, info.displayName].filter(Boolean))]
+      let foundTasks = []
+      for (const alias of aliases) {
+        const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', alias))
+        if (snap.exists()) {
+          const data = snap.data() || {}
+          if (Array.isArray(data.tasks)) {
+            foundTasks = data.tasks
+            if (data.tasks.length > 0) break
+          }
+        }
+      }
+      result[kidId] = buildCoinEntriesFromTasks(foundTasks)
+    }
+
+    setCoinLedgerByKid(result)
+  }
+
+  const openCoinLedger = async () => {
+    try {
+      await loadCoinLedger()
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setShowCoinLedger(true)
+    }
+  }
+
+  const getKidAliases = (kidId) => {
+    const info = allUsers[kidId] || {}
+    return [...new Set([kidId, info.loginId, info.name, info.displayName].filter(Boolean))]
+  }
+
+  const loadAllKidTasksForAdmin = async () => {
+    if (!isAdmin) return
+    if (!isCloud) {
+      setAllTasksByKid({ [activeKidId]: tasks })
+      return
+    }
+    const taskMap = {}
+    for (const kidId of kidsList) {
+      const aliases = getKidAliases(kidId)
+      let found = []
+      for (const alias of aliases) {
+        const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', alias))
+        if (snap.exists()) {
+          const data = snap.data() || {}
+          if (Array.isArray(data.tasks)) {
+            found = data.tasks
+            if (data.tasks.length > 0) break
+          }
+        }
+      }
+      taskMap[kidId] = found
+    }
+    setAllTasksByKid(taskMap)
+    setFixedOpenByKid((prev) => {
+      const next = { ...prev }
+      kidsList.forEach((kidId) => {
+        if (typeof next[kidId] !== 'boolean') next[kidId] = true
+      })
+      return next
+    })
+  }
+
+  const updateFixedClassTask = async (kidId, taskId, patch) => {
+    const currentTasks = allTasksByKid[kidId] || []
+    const nextTasks = currentTasks.map((task) => (String(task.id) === String(taskId) ? { ...task, ...patch } : task))
+    setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+    if (isCloud) {
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
+        { tasks: nextTasks, updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    }
+    if (kidId === activeKidId) {
+      setTasks(nextTasks)
+      await persistKidState({ tasks: nextTasks })
+    }
+  }
+
+  const deleteFixedClassTask = async (kidId, taskId) => {
+    const currentTasks = allTasksByKid[kidId] || []
+    const nextTasks = currentTasks.filter((task) => String(task.id) !== String(taskId))
+    setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+    if (isCloud) {
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
+        { tasks: nextTasks, updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    }
+    if (kidId === activeKidId) {
+      setTasks(nextTasks)
+      await persistKidState({ tasks: nextTasks })
+    }
+  }
 
   const handleSendReply = async () => {
     if (!replyText || !unreadMessage) return
@@ -377,6 +497,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
     run().catch(console.error)
   }, [isAdmin, showFamilyManager, unreadRepliesForAdmin, isCloud, messages])
+
+  useEffect(() => {
+    if (!isAdmin || !showPalette) return
+    loadAllKidTasksForAdmin().catch(console.error)
+  }, [isAdmin, showPalette, kidsList.join('|')])
 
   const addTaskFromPalette = async (hour, subject) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
@@ -450,6 +575,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setBulkInput('')
     setShowClassManager(false)
   }
+
+  const fixedClassesByKid = useMemo(() => {
+    const source = isAdmin ? allTasksByKid : { [activeKidId]: tasks }
+    const next = {}
+    Object.entries(source || {}).forEach(([kidId, list]) => {
+      next[kidId] = (list || [])
+        .filter((task) => task?.type === 'class')
+        .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+    })
+    return next
+  }, [isAdmin, allTasksByKid, activeKidId, tasks])
 
   const glassStyle = {
     background: 'rgba(255,255,255,0.7)',
@@ -533,45 +669,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   ) : (
                     getFullName(activeKidId)
                   )}
-                  {isMobile ? (
-                    <span
-                      style={{
-                        borderRadius: '999px',
-                        padding: '3px 8px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
-                        border: '1px solid #ffd8a8'
-                      }}
-                    >
-                      <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Coins size={11} color="white" />
-                      </span>
-                      <strong style={{ color: '#c96d00', fontSize: '12px', lineHeight: 1 }}>{availableCoins}</strong>
+                  <button
+                    onClick={openCoinLedger}
+                    style={{
+                      borderRadius: '999px',
+                      padding: isMobile ? '3px 8px' : '5px 10px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
+                      border: '1px solid #ffd8a8',
+                      cursor: 'pointer'
+                    }}
+                    title="코인 내역 보기"
+                  >
+                    <span style={{ width: isMobile ? '20px' : '22px', height: isMobile ? '20px' : '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Coins size={isMobile ? 11 : 12} color="white" />
                     </span>
-                  ) : (
-                    <span
-                      style={{
-                        borderRadius: '14px',
-                        padding: '5px 10px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
-                        border: '1px solid #ffd8a8',
-                        boxShadow: '0 4px 10px rgba(255,157,0,0.14)'
-                      }}
-                    >
-                      <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Coins size={14} color="white" />
-                      </span>
-                      <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.1 }}>
-                        <strong style={{ color: '#c96d00', fontSize: '15px' }}>{availableCoins} 코인</strong>
-                        <span style={{ fontSize: '10px', color: '#9a7a3a', fontWeight: 700 }}>{nextRewardInfo.label}</span>
-                      </span>
-                    </span>
-                  )}
+                    <strong style={{ color: '#c96d00', fontSize: isMobile ? '12px' : '13px', lineHeight: 1 }}>{availableCoins}</strong>
+                  </button>
                 </h1>
               </div>
             </div>
@@ -588,8 +704,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   ) : null}
                 </button>
               )}
-              {isAdmin && <button onClick={() => setShowClassManager(true)} className="header-btn-original"><LayoutGrid size={isMobile ? 18 : 22} /></button>}
-              {isAdmin && <button onClick={() => setShowAppLauncher(true)} className="header-btn-original"><Gift size={isMobile ? 18 : 22} /></button>}
+              <button onClick={() => setShowAppLauncher(true)} className="header-btn-original" title="학습 앱">
+                <LayoutGrid size={isMobile ? 18 : 22} />
+              </button>
+              <button onClick={() => setShowAllowanceBook(true)} className="header-btn-original" title="용돈기입장">
+                <PiggyBank size={isMobile ? 18 : 22} />
+              </button>
               <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22} /></button>
               <button onClick={() => setShowSettings(true)} className="header-btn-original"><Settings size={isMobile ? 18 : 22} /></button>
               <button onClick={onLogout} className="header-btn-original" style={{ color: PRIMARY_PINK }}><LogOut size={isMobile ? 18 : 22} /></button>
@@ -726,6 +846,75 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 팔레트</h2>
               <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon size={24} /></button>
             </div>
+            <div style={{ padding: '10px 18px 0' }}>
+              <button
+                onClick={() => setFixedSectionOpen((prev) => !prev)}
+                style={{ width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '12px', padding: '10px 12px', fontWeight: 900, cursor: 'pointer', textAlign: 'left' }}
+              >
+                {fixedSectionOpen ? '▼' : '▶'} 고정수업
+              </button>
+              {fixedSectionOpen ? (
+                <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
+                  {kidsList.map((kidId) => {
+                    const isOpen = fixedOpenByKid[kidId] !== false
+                    const classItems = fixedClassesByKid[kidId] || []
+                    return (
+                      <div key={`fixed-${kidId}`} style={{ border: '1px solid #ffe1ea', borderRadius: '12px', padding: '8px' }}>
+                        <button
+                          onClick={() => setFixedOpenByKid((prev) => ({ ...prev, [kidId]: !isOpen }))}
+                          style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 900, color: '#ff4d6d', cursor: 'pointer', padding: '4px 2px' }}
+                        >
+                          {isOpen ? '▼' : '▶'} {getFullName(kidId)} ({classItems.length})
+                        </button>
+                        {isOpen ? (
+                          <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
+                            {classItems.map((task) => (
+                              <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                  {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+                                </div>
+                                <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
+                                  <button
+                                    onClick={async () => {
+                                      const nextName = prompt('수업 이름', task.name || '')
+                                      if (!nextName) return
+                                      const nextStart = prompt('시작 시간 (HH:mm)', task.startTime || '07:00')
+                                      if (!nextStart) return
+                                      const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
+                                      if (Number.isNaN(nextDuration) || nextDuration <= 0) return
+                                      await updateFixedClassTask(kidId, task.id, {
+                                        name: nextName.trim(),
+                                        startTime: nextStart,
+                                        duration: nextDuration,
+                                        expectedEndTime: buildExpectedEndTime(nextStart, nextDuration)
+                                      })
+                                    }}
+                                    style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!window.confirm('이 고정수업을 삭제할까요?')) return
+                                      await deleteFixedClassTask(kidId, task.id)
+                                    }}
+                                    style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
             <SubjectPalette
               cloud={cloud}
               activeKidId={activeKidId}
@@ -734,13 +923,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               onSubjectsChange={() => {}}
               onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
                 if (!isAdmin || beforeCoins === afterCoins) return
-                await appendSystemLog({
-                  kidId,
-                  text: `코인 변경: ${getFullName(kidId)} · ${subjectName} (${beforeCoins} → ${afterCoins})`
-                })
+                await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
               }}
               isAdmin={isAdmin}
               allowDrag={!isMobile && !isAdmin}
+              collapsibleAdminSections
             />
           </div>
         )}
@@ -879,6 +1066,46 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {showCoinLedger && (
+          <div className="modal-overlay" onClick={() => setShowCoinLedger(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: isMobile ? '95%' : '520px', width: '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>코인 획득 내역</h2>
+                <button onClick={() => setShowCoinLedger(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+              </div>
+
+              {isAdmin ? (
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  {kidsList.map((kidId) => (
+                    <div key={kidId} style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '10px' }}>
+                      <div style={{ fontWeight: 900, marginBottom: '8px' }}>{getFullName(kidId)}</div>
+                      <div style={{ display: 'grid', gap: '6px' }}>
+                        {(coinLedgerByKid[kidId] || []).map((entry) => (
+                          <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '6px 8px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                            <span>{entry.date} · {entry.title}</span>
+                            <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
+                          </div>
+                        ))}
+                        {(coinLedgerByKid[kidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>내역 없음</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  {(coinLedgerByKid[activeKidId] || []).map((entry) => (
+                    <div key={entry.id} style={{ fontSize: '12px', background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                      <span>{entry.date} · {entry.title}</span>
+                      <strong style={{ color: '#c96d00' }}>+{entry.coins}</strong>
+                    </div>
+                  ))}
+                  {(coinLedgerByKid[activeKidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 코인 획득 내역이 없어요.</div>}
+                </div>
+              )}
             </div>
           </div>
         )}
