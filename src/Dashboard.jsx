@@ -216,6 +216,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [tasks, selectedDate])
 
+  const nextRewardInfo = useMemo(() => {
+    const sorted = [...rewards]
+      .filter((reward) => Number(reward?.coins) > availableCoins)
+      .sort((a, b) => Number(a.coins) - Number(b.coins))
+    const next = sorted[0] || null
+    if (!next) return { label: '선물 교환 가능!', remain: 0 }
+    const remain = Math.max(0, Number(next.coins) - availableCoins)
+    return { label: `${next.text}까지 ${remain}코인`, remain }
+  }, [rewards, availableCoins])
+
   const isMessageForActiveKid = (kidId) => {
     const info = allUsers[activeKidId] || {}
     const aliases = [activeKidId, info.loginId, info.name, info.displayName].filter(Boolean)
@@ -368,8 +378,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div>
                 <h1 style={{ fontSize: isMobile ? '18px' : '21px', fontWeight: 900, color: '#333', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {getFullName(activeKidId)}
-                  <span style={{ fontSize: isMobile ? '15px' : '16px', color: PRIMARY_PINK, background: '#fff0f3', border: '1px solid #ffd7e3', borderRadius: '999px', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <Coins size={15} /> {availableCoins}
+                  <span
+                    style={{
+                      borderRadius: '14px',
+                      padding: isMobile ? '4px 9px' : '5px 10px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'linear-gradient(135deg, #fff7db 0%, #ffe8f0 100%)',
+                      border: '1px solid #ffd8a8',
+                      boxShadow: '0 4px 10px rgba(255,157,0,0.14)'
+                    }}
+                  >
+                    <span style={{ width: isMobile ? '24px' : '26px', height: isMobile ? '24px' : '26px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Coins size={isMobile ? 13 : 14} color="white" />
+                    </span>
+                    <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                      <strong style={{ color: '#c96d00', fontSize: isMobile ? '14px' : '15px' }}>{availableCoins} 코인</strong>
+                      {!isMobile && <span style={{ fontSize: '10px', color: '#9a7a3a', fontWeight: 700 }}>{nextRewardInfo.label}</span>}
+                    </span>
                   </span>
                 </h1>
               </div>
