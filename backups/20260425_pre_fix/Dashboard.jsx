@@ -132,13 +132,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
   const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
   const [showDailyLog, setShowDailyLog] = useState(false)
-  const [showTotalAuditLog, setShowTotalAuditLog] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [dataLoaded, setDataLoaded] = useState(false)
   const [viewMonth, setViewMonth] = useState(new Date())
-  const [expandedCoinGroups, setExpandedCoinGroups] = useState({})
-  const [auditLogFilter, setAuditLogFilter] = useState('all') // 'all', 'study', 'coin', 'allowance'
-  const [auditDateFilter, setAuditDateFilter] = useState('all') // 'all', 'today'
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50, scope: 'shared', kidId: '' })
   const [newEssential, setNewEssential] = useState('')
@@ -219,7 +214,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const resolve = async () => {
       if (!isCloud) {
         setResolvedKidDocId(unique[0] || activeKidId)
-        setDataLoaded(true)
         return
       }
       let firstExisting = null
@@ -227,27 +221,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', id))
         if (snap.exists()) {
           const data = snap.data() || {}
-          const hasData = (Array.isArray(data.tasks) && data.tasks.length > 0) || 
-                          (Array.isArray(data.allowanceEntries) && data.allowanceEntries.length > 0) ||
-                          (Array.isArray(data.doneLogs) && data.doneLogs.length > 0) ||
-                          (Array.isArray(data.rewards) && data.rewards.length > 0) ||
-                          (Array.isArray(data.essentials) && data.essentials.length > 0) ||
-                          Number(data.spentCoins || 0) > 0
-          
-          if (hasData) {
-            if (!cancelled) {
-              setResolvedKidDocId(id)
-              setDataLoaded(true)
-            }
+          if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+            if (!cancelled) setResolvedKidDocId(id)
             return
           }
           if (!firstExisting) firstExisting = id
         }
       }
-      if (!cancelled) {
-        setResolvedKidDocId(firstExisting || unique[0] || activeKidId)
-        setDataLoaded(true)
-      }
+      if (!cancelled) setResolvedKidDocId(firstExisting || unique[0] || activeKidId)
     }
 
     resolve().catch(console.error)
@@ -342,7 +323,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [isCloud, cloud?.db, cloud?.householdId])
 
   useEffect(() => {
-    if (!dataLoaded) return
     if (tasks.length > 0) {
       const legacyToMigrate = tasks.filter(t => t.completed && t.date && !doneLogs.some(l => String(l.taskId) === String(t.id) && l.date === t.date));
       if (legacyToMigrate.length > 0) {
@@ -370,7 +350,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }
 
   const persistKidState = async (overrides = {}) => {
-    if (!isCloud || !resolvedKidDocId || !dataLoaded) return
+    if (!isCloud || !resolvedKidDocId) return
     await setDoc(
       doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId),
       { tasks, rewards, essentials, spentCoins, allowanceEntries, doneLogs, ...overrides, updatedAt: serverTimestamp() },
@@ -430,7 +410,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }
 
-  const appendCoinLog = async ({ kidId, subjectName, beforeCoins, afterCoins, actionType = 'change' }) => {
+  const appendCoinLog = async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
     if (!isCloud) return
     const now = new Date()
     await mergeMetaDoc('coinLogs', {
@@ -440,23 +420,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         subjectName,
         beforeCoins,
         afterCoins,
-        actionType,
         date: format(now, 'yyyy-MM-dd'),
         createdAt: now.toISOString(),
         createdAtLabel: format(now, 'yyyy-MM-dd HH:mm')
       }),
       updatedAt: serverTimestamp()
     })
-  }
-
-  const deleteCoinLog = async (logId) => {
-    if (!isAdmin || !isCloud) return
-    const logToDelete = coinLogs.find(l => l.id === logId)
-    if (!logToDelete) return
-    if (!window.confirm('이 코인 변경 로그를 삭제할까요? (실제 코인 잔액에는 영향을 주지 않으며 기록만 삭제됩니다.)')) return
-    
-    const next = coinLogs.filter(l => l.id !== logId)
-    await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', 'coinLogs'), { logs: next, updatedAt: serverTimestamp() }, { merge: true })
   }
 
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), index))
@@ -655,38 +624,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
   }
 
-  const updateFixedClassTask = async (kidId, taskId, patch, scope = 'all') => {
+  const updateFixedClassTask = async (kidId, taskId, patch) => {
     const currentTasks = allTasksByKid[kidId] || (kidId === activeKidId ? tasks : [])
-    const targetTask = currentTasks.find(t => String(t.id) === String(taskId))
-    if (!targetTask) return
-
-    let nextTasks = currentTasks
-    const nowStr = format(new Date(), 'yyyy-MM-dd')
-    const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd')
-
-    if (scope === 'today_onwards' || scope === 'tomorrow_onwards') {
-      const splitDate = scope === 'today_onwards' ? nowStr : format(addDays(new Date(), 1), 'yyyy-MM-dd')
-      const capDate = scope === 'today_onwards' ? yesterdayStr : nowStr
-
-      // Update old task to end
-      nextTasks = currentTasks.map(t => (String(t.id) === String(taskId) ? { ...t, endDate: capDate, classEndDate: capDate } : t))
-      
-      // Create new task from today/tomorrow
-      const newTask = {
-        ...targetTask,
-        ...patch,
-        id: `class-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        startDate: splitDate,
-        classStartDate: splitDate,
-        endDate: null,
-        classEndDate: null
-      }
-      nextTasks.push(newTask)
-    } else {
-      // Default: 'all'
-      nextTasks = currentTasks.map((task) => (String(task.id) === String(taskId) ? { ...task, ...patch } : task))
-    }
-
+    const nextTasks = currentTasks.map((task) => (String(task.id) === String(taskId) ? { ...task, ...patch } : task))
     setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
     let targetDocId = kidId
     if (isCloud) {
@@ -698,16 +638,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       )
     }
     if (kidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
-
-    if (patch.coins !== undefined && Number(patch.coins) !== getTaskCoins(targetTask)) {
-      await appendCoinLog({
-        kidId,
-        subjectName: `고정수업 코인 수정: ${targetTask.name} (${scope})`,
-        beforeCoins: Number(targetTask.coins || 0),
-        afterCoins: Number(patch.coins),
-        actionType: 'template_change'
-      })
-    }
   }
 
   const deleteFixedClassTask = async (kidId, taskId) => {
@@ -1128,8 +1058,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                               onBlur={async (e) => {
                                 const val = parseInt(e.target.value, 10)
                                 if (!Number.isNaN(val) && val !== getTaskCoins(task)) {
-                                  const scope = window.confirm('전체 기간에 적용할까요? (취소 시 오늘부터 적용)') ? 'all' : 'today_onwards'
-                                  await updateFixedClassTask(kidId, task.id, { coins: val }, scope)
+                                  await updateFixedClassTask(kidId, task.id, { coins: val })
                                 }
                               }}
                               style={{ width: '42px', height: '20px', border: '1px solid #ffe1ea', borderRadius: '4px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: PRIMARY_PINK }}
@@ -1146,17 +1075,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                               const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
                               const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
                               if (weekdayRaw === null) return
+                              const nextStart = prompt('시작 시간 (HH:mm)', task.startTime || '07:00')
+                              if (!nextStart) return
+                              const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
+                              if (Number.isNaN(nextDuration) || nextDuration <= 0) return
+                              const coinsRaw = prompt('완료 코인', String(getTaskCoins(task)))
+                              if (coinsRaw === null) return
+                              const parsedCoins = Number(coinsRaw || 0)
+                              if (Number.isNaN(parsedCoins)) return
+                              const nextCoins = Math.max(0, parsedCoins)
                               const parsedWeekday = parseInt(weekdayRaw, 10)
                               const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
-                              
-                              const nextStart = prompt('시업 시간', task.startTime || '09:00')
-                              if (nextStart === null) return
-                              const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 60)), 10) || 60
-                              const nextCoins = parseInt(prompt('코인', String(getTaskCoins(task))), 10) || 0
-                              
-                              const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
-                              const scope = scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
-
                               await updateFixedClassTask(kidId, task.id, {
                                 name: nextName.trim(),
                                 weekday: nextWeekday,
@@ -1164,7 +1093,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                 duration: nextDuration,
                                 expectedEndTime: buildExpectedEndTime(nextStart, nextDuration),
                                 coins: nextCoins
-                              }, scope)
+                              })
                             }}
                             style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                           >
@@ -1298,17 +1227,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '2px' : 0 }}>
               {isAdmin && <button onClick={openSubjectManager} className="header-btn-original" title="과목 총 관리" aria-label="과목 총 관리"><Plus size={isMobile ? 18 : 22} /></button>}
-              {isAdmin && (
-                <button onClick={() => setShowTotalAuditLog(true)} className="header-btn-original" title="전체 활동 로그">
-                  <Calendar size={isMobile ? 18 : 22} color="#fbbf24" />
-                </button>
-              )}
-              {isAdmin && (
-                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" title="오늘의 기록 관리">
-                  <Check size={isMobile ? 18 : 22} />
-                  {doneLogs.some(l => l.editRequested) && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
-                </button>
-              )}
               {isAdmin && (
                 <button onClick={() => setShowFamilyManager(true)} className="header-btn-original" style={{ position: 'relative' }}>
                   <Users size={isMobile ? 18 : 22} />
@@ -1781,52 +1699,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {(() => {
-                  const entries = coinLedgerByKid[activeKidId] || []
-                  const grouped = entries.reduce((acc, entry) => {
-                    const d = entry.date || '기타'
-                    if (!acc[d]) acc[d] = { date: d, items: [], total: 0 }
-                    acc[d].items.push(entry)
-                    acc[d].total += Number(entry.coins || 0)
-                    return acc
-                  }, {})
-                  
-                  return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)).map((group) => {
-                    const groupKey = group.date
-                    const isExpanded = !!expandedCoinGroups[groupKey]
-                    
-                    return (
-                      <div key={groupKey} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-                        <div 
-                          onClick={() => setExpandedCoinGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
-                          style={{ background: '#f8fafc', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-                        >
-                          <div style={{ fontSize: '13px', fontWeight: 900, color: '#334155' }}>
-                            {group.date} <span style={{ color: '#94a3b8', fontWeight: 'normal', fontSize: '11px', marginLeft: '4px' }}>({group.items.length}건)</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong style={{ color: '#c96d00', fontSize: '14px' }}>+{group.total}</strong>
-                            <span style={{ fontSize: '10px', color: '#64748b' }}>{isExpanded ? '▲' : '▼'}</span>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                          <div style={{ padding: '4px 8px', background: 'white' }}>
-                            {group.items.map((item) => (
-                              <div key={item.id} style={{ fontSize: '12px', padding: '8px 4px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: '#64748b' }}>{item.title}</span>
-                                <strong style={{ color: '#c96d00' }}>+{item.coins}</strong>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                })()}
-                {(coinLedgerByKid[activeKidId] || []).length === 0 && <div style={{ fontSize: '12px', color: '#999' }}>아직 코인 획득 내역이 없어요.</div>}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', marginTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인 획득 내역</h3>
                 <button onClick={() => setShowAllCoinEntries((prev) => !prev)} style={{ border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                   {showAllCoinEntries ? '접기' : '더보기'}
@@ -1861,57 +1734,19 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         )}
 
-        {showTotalAuditLog && isAdmin && (
-          <div className="modal-overlay" onClick={() => setShowTotalAuditLog(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '15px' : '25px', maxWidth: '600px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>전체 활동 로그</h2>
-                <button onClick={() => setShowTotalAuditLog(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
-              </div>
-
-              <div style={{ display: 'flex', gap: '6px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {[
-                  { id: 'all', label: '전체' },
-                  { id: 'study', label: '학습/수업' },
-                  { id: 'coin', label: '코인' },
-                  { id: 'allowance', label: '용돈' }
-                ].map(f => (
-                  <button
-                    key={f.id}
-                    onClick={() => setAuditLogFilter(f.id)}
-                    style={{
-                      flexShrink: 0,
-                      padding: '6px 12px',
-                      borderRadius: '10px',
-                      border: auditLogFilter === f.id ? `1.5px solid ${PRIMARY_PINK}` : '1.5px solid #eee',
-                      background: auditLogFilter === f.id ? LIGHT_PINK : 'white',
-                      color: auditLogFilter === f.id ? PRIMARY_PINK : '#666',
-                      fontWeight: 900,
-                      fontSize: '12px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-                <button 
-                  onClick={() => setAuditDateFilter('all')}
-                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditDateFilter === 'all' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditDateFilter === 'all' ? LIGHT_PINK : 'white', color: auditDateFilter === 'all' ? PRIMARY_PINK : '#666' }}
-                >전체 기간</button>
-                <button 
-                  onClick={() => setAuditDateFilter('today')}
-                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditDateFilter === 'today' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditDateFilter === 'today' ? LIGHT_PINK : 'white', color: auditDateFilter === 'today' ? PRIMARY_PINK : '#666' }}
-                >오늘만</button>
+        {showDailyLog && isAdmin && (
+          <div className="modal-overlay" onClick={() => setShowDailyLog(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '20px' : '30px', maxWidth: '520px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>오늘의 기록 관리</h2>
+                <button onClick={() => setShowDailyLog(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
               </div>
 
               <div style={{ background: '#fdf4f7', padding: '15px', borderRadius: '18px', marginBottom: '20px', border: '1px solid #ffdeeb' }}>
                 <div style={{ fontSize: '13px', fontWeight: 900, color: PRIMARY_PINK, marginBottom: '10px' }}>🎁 코인 선물하기</div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <input className="input-field" type="number" placeholder="개수" id="giftAmount" style={{ width: '80px' }} />
-                  <input className="input-field" placeholder="메모" id="giftMemo" style={{ flex: 1 }} />
+                  <input className="input-field" type="number" placeholder="코인 개수" id="giftAmount" />
+                  <input className="input-field" placeholder="메모" id="giftMemo" />
                   <button className="btn-primary" onClick={() => {
                     const amount = parseInt(document.getElementById('giftAmount').value, 10)
                     const memo = document.getElementById('giftMemo').value
@@ -1925,53 +1760,58 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               </div>
 
               <div style={{ display: 'grid', gap: '10px' }}>
-                {(() => {
-                  const activityLogs = doneLogs.map(l => ({ ...l, logType: 'activity' }))
-                  const coinActivityLogs = coinLogs.filter(l => l.kidId === activeKidId).map(l => ({ ...l, id: l.id || `coin-${l.createdAt}`, logType: 'coin', name: l.subjectName, coins: l.afterCoins - l.beforeCoins, date: l.date }))
-                  const moneyLogs = allowanceEntries.map(e => ({ ...e, logType: 'allowance', name: `[용돈] ${e.title}`, coins: e.amount, date: e.date }))
-
-                  const combined = [...activityLogs, ...coinActivityLogs, ...moneyLogs]
-                    .filter(log => {
-                      if (auditDateFilter === 'today' && log.date !== todayStr) return false
-                      if (auditLogFilter === 'all') return true
-                      if (auditLogFilter === 'study') return log.logType === 'activity'
-                      if (auditLogFilter === 'coin') return log.logType === 'coin'
-                      if (auditLogFilter === 'allowance') return log.logType === 'allowance'
-                      return true
-                    })
-                    .sort((a, b) => (b.timestamp || new Date(b.createdAt || b.date).getTime()) - (a.timestamp || new Date(a.createdAt || a.date).getTime()))
-
-                  return combined.map(log => (
-                    <div key={`${log.logType}-${log.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 900, fontSize: '14px', color: '#333' }}>{log.name}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                          {log.date} {log.createdAtLabel ? `· ${log.createdAtLabel.split(' ')[1]}` : ''} · 
-                          <span style={{ marginLeft: '4px', color: log.logType === 'allowance' ? '#1d4ed8' : log.logType === 'coin' ? '#c96d00' : PRIMARY_PINK, fontWeight: 800 }}>
-                            {log.logType === 'coin' ? (log.coins > 0 ? `+${log.coins}` : log.coins) : log.coins} {log.logType === 'allowance' ? '원' : '코인'}
-                          </span>
-                        </div>
+                <h3 style={{ fontSize: '15px', fontWeight: 900, color: '#333', margin: '10px 0 5px' }}>기록 및 수정 요청</h3>
+                {[
+                  ...doneLogs.filter(l => l.date === todayStr || l.editRequested).map(l => ({ ...l, logType: 'activity' })),
+                  ...allowanceEntries.filter(e => e.date === todayStr).map(e => ({ ...e, logType: 'allowance', name: `[용돈기입장] ${e.title}`, coins: e.amount }))
+                ].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0)).map(log => (
+                  <div key={log.id} style={{ background: log.editRequested ? '#fffbeb' : '#f8fafc', border: log.editRequested ? '1.5px solid #fbbf24' : '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 900, fontSize: '14px' }}>{log.name}</span>
+                        {log.editRequested && <span style={{ fontSize: '10px', background: '#fbbf24', color: 'white', padding: '2px 6px', borderRadius: '999px', fontWeight: 900 }}>수정 요청</span>}
                       </div>
-                      <button 
-                        onClick={() => {
-                          if (log.logType === 'allowance') {
-                            if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(log.id)
-                          } else if (log.logType === 'coin') {
-                            deleteCoinLog(log.id)
-                          } else {
-                            deleteDoneLog(log.id)
+                      <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
+                        {log.logType === 'allowance' ? (log.type === 'income' ? '수입' : '지출') : (log.status === 'completed' ? '완료' : log.status === 'holiday' ? '휴강' : '결석')} · {log.coins}코인 · {log.date}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {log.logType === 'activity' && log.taskId !== 'gift' && (
+                        <button 
+                          onClick={() => {
+                            const el = document.getElementById(`task-${log.taskId}`);
+                            if (el) {
+                              setShowDailyLog(false);
+                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              el.style.boxShadow = `0 0 20px ${PRIMARY_PINK}`;
+                              setTimeout(() => el.style.boxShadow = '', 2000);
+                            } else {
+                              alert('해당 일정을 찾을 수 없어요. 오늘 일정이 맞는지 확인해 주세요.');
+                            }
+                          }}
+                          style={{ border: '1px solid #ddd', background: 'white', color: '#666', padding: '8px', borderRadius: '10px', cursor: 'pointer' }}
+                          title="일정으로 이동"
+                        >
+                          이동
+                        </button>
+                      )}
+                      <button onClick={() => {
+                        if (log.logType === 'allowance') {
+                          if (window.confirm('이 용돈 내역을 삭제할까요?')) {
+                            const next = allowanceEntries.filter(e => e.id !== log.id);
+                            setAllowanceEntries(next);
+                            persistKidState({ allowanceEntries: next });
                           }
-                        }}
-                        style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }}
-                      >
+                        } else {
+                          deleteDoneLog(log.id);
+                        }
+                      }} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }} title="삭제">
                         <Trash size={16} />
                       </button>
                     </div>
-                  ))
-                })()}
-                {doneLogs.length === 0 && coinLogs.length === 0 && allowanceEntries.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>기록된 활동이 없어요.</div>
-                )}
+                  </div>
+                ))}
+                {doneLogs.filter(l => l.date === todayStr).length === 0 && allowanceEntries.filter(e => e.date === todayStr).length === 0 && <div style={{ textAlign: 'center', padding: '30px', color: '#999', fontSize: '14px' }}>오늘 기록된 활동이 없어요.</div>}
               </div>
             </div>
           </div>
