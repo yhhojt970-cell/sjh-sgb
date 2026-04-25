@@ -116,7 +116,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [sharedRewards, setSharedRewards] = useState([])
   const [spentCoins, setSpentCoins] = useState(0)
   const [allowanceEntries, setAllowanceEntries] = useState([])
-  const [doneLogs, setDoneLogs] = useState([])
 
   const [showSettings, setShowSettings] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
@@ -130,7 +129,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
   const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
-  const [showDailyLog, setShowDailyLog] = useState(false)
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50, scope: 'shared', kidId: '' })
   const [newEssential, setNewEssential] = useState('')
@@ -280,7 +278,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setEssentials(nextEssentials)
       setSpentCoins(Number(data?.spentCoins || 0))
       setAllowanceEntries(Array.isArray(data?.allowanceEntries) ? data.allowanceEntries : [])
-      setDoneLogs(Array.isArray(data?.doneLogs) ? data.doneLogs : [])
 
       if (nextEssentials.length === 0) {
         restoreMissingEssentialsFromAliases().catch(console.error)
@@ -329,7 +326,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     if (!isCloud || !resolvedKidDocId) return
     await setDoc(
       doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId),
-      { tasks, rewards, essentials, spentCoins, allowanceEntries, doneLogs, ...overrides, updatedAt: serverTimestamp() },
+      { tasks, rewards, essentials, spentCoins, allowanceEntries, ...overrides, updatedAt: serverTimestamp() },
       { merge: true }
     )
   }
@@ -337,53 +334,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const mergeMetaDoc = async (docId, payload) => {
     if (!isCloud) return
     await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', docId), payload, { merge: true })
-  }
-
-  const giftCoins = async (amount, memo = '') => {
-    if (!isAdmin || !amount || amount <= 0) return
-    const now = new Date()
-    const logId = `gift-${Date.now()}`
-    const newLog = {
-      id: logId,
-      taskId: 'gift',
-      name: `엄마의 선물${memo ? `: ${memo}` : ''}`,
-      type: 'gift',
-      date: todayStr,
-      status: 'completed',
-      coins: Number(amount),
-      timestamp: Date.now(),
-      createdAtLabel: format(now, 'yyyy-MM-dd HH:mm')
-    }
-    const nextLogs = [...doneLogs, newLog]
-    setDoneLogs(nextLogs)
-    await persistKidState({ doneLogs: nextLogs })
-    await appendCoinLog({
-      kidId: activeKidId,
-      subjectName: `엄마의 선물 (${amount}코인)`,
-      beforeCoins: availableCoins,
-      afterCoins: availableCoins + amount
-    })
-  }
-
-  const deleteDoneLog = async (logId) => {
-    if (!isAdmin) return
-    const logToDelete = doneLogs.find(l => l.id === logId)
-    if (!logToDelete) return
-    
-    if (!window.confirm(`'${logToDelete.name}' 기록을 삭제할까요? 관련 코인도 회수됩니다.`)) return
-    
-    const nextLogs = doneLogs.filter(l => l.id !== logId)
-    setDoneLogs(nextLogs)
-    await persistKidState({ doneLogs: nextLogs })
-    
-    if (logToDelete.coins > 0) {
-      await appendCoinLog({
-        kidId: activeKidId,
-        subjectName: `기록 삭제: ${logToDelete.name}`,
-        beforeCoins: availableCoins,
-        afterCoins: availableCoins - logToDelete.coins
-      })
-    }
   }
 
   const appendCoinLog = async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
@@ -428,31 +378,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }
 
   const availableCoins = useMemo(
-    () => doneLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0) - spentCoins,
-    [doneLogs, spentCoins]
+    () => tasks.filter((task) => task.completed && getTaskCoins(task) > 0).reduce((sum, task) => sum + getTaskCoins(task), 0) - spentCoins,
+    [tasks, spentCoins]
   )
 
   const weekMonthReport = useMemo(() => {
     const year = selectedDate.getFullYear()
     const month = selectedDate.getMonth()
     const currentWeek = format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    
-    const weekLogs = doneLogs.filter((log) => {
-      const date = new Date(log.date)
+    const completed = tasks.filter((task) => task.completed && task.date && getTaskCoins(task) > 0)
+    const weekTasks = completed.filter((task) => {
+      const date = new Date(task.date)
       return !Number.isNaN(date.getTime()) && format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd') === currentWeek
     })
-    const monthLogs = doneLogs.filter((log) => {
-      const date = new Date(log.date)
+    const monthTasks = completed.filter((task) => {
+      const date = new Date(task.date)
       return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === month
     })
-    
     return {
-      weekCoins: weekLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0),
-      weekCount: weekLogs.length,
-      monthCoins: monthLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0),
-      monthCount: monthLogs.length
+      weekCoins: weekTasks.reduce((sum, task) => sum + getTaskCoins(task), 0),
+      weekCount: weekTasks.length,
+      monthCoins: monthTasks.reduce((sum, task) => sum + getTaskCoins(task), 0),
+      monthCount: monthTasks.length
     }
-  }, [doneLogs, selectedDate])
+  }, [tasks, selectedDate])
 
   const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -1127,14 +1076,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         <header style={{ ...glassStyle, padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(255,77,109,0.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '8px' : '20px', flexDirection: isMobile ? 'column' : 'row' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '15px' }}>
-              <div onClick={() => (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) && (isAdmin ? setShowDailyLog(true) : setShowSurprise(true))} style={{ position: 'relative', cursor: (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) ? 'pointer' : 'default' }}>
-                <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none' }}>
-                  {(isAdmin && doneLogs.some(l => l.editRequested)) ? <MessageSquare size={isMobile ? 22 : 24} color="white" /> : unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" />}
-                  {(isAdmin && doneLogs.some(l => l.editRequested)) && (
-                    <span style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#fbbf24', color: 'white', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid white' }}>
-                      !
-                    </span>
-                  )}
+              <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
+                <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none' }}>
+                  {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" />}
                 </div>
               </div>
               <div>
@@ -1197,12 +1141,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       {unreadRepliesForAdmin > 9 ? '9+' : unreadRepliesForAdmin}
                     </span>
                   ) : null}
-                </button>
-              )}
-              {isAdmin && (
-                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" title="오늘의 기록 관리">
-                  <Calendar size={isMobile ? 18 : 22} />
-                  {doneLogs.some(l => l.editRequested) && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
                 </button>
               )}
               <button onClick={() => setShowAppLauncher(true)} className="header-btn-original" title="학습 앱">
@@ -1276,46 +1214,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden', flex: 1, width: '100%' }}>
             <TimeGrid
               tasks={todayTasks}
-              doneLogs={doneLogs}
-              todayStr={todayStr}
               isAdmin={isAdmin}
               isMobile={isMobile}
               essentialChecklist={essentials}
               onUpdateTask={(id, updates) => {
-                if (updates.status !== undefined || updates.completed !== undefined) {
-                  const task = tasks.find((t) => String(t.id) === String(id))
-                  if (task) {
-                    const logId = `${id}-${todayStr}`
-                    const isRemoval = updates.status === '' || updates.status === null
-                    
-                    let nextLogs
-                    if (isRemoval) {
-                      nextLogs = doneLogs.filter((l) => l.id !== logId)
-                    } else {
-                      const newLog = {
-                        id: logId,
-                        taskId: id,
-                        name: task.name,
-                        type: task.type,
-                        date: todayStr,
-                        status: updates.status || (updates.completed ? 'completed' : ''),
-                        coins: updates.completed ? (updates.coins !== undefined ? updates.coins : getTaskCoins(task)) : 0,
-                        timestamp: Date.now(),
-                        startTimeActual: updates.startTimeActual || '',
-                        endTimeActual: updates.endTimeActual || '',
-                        durationActual: updates.durationActual || 0
-                      }
-                      nextLogs = [...doneLogs.filter((l) => l.id !== logId), newLog]
-                    }
-                    setDoneLogs(nextLogs)
-                    persistKidState({ doneLogs: nextLogs })
-                    return
-                  }
-                }
-
                 const next = tasks.map((task) => {
                   if (task.id !== id) return task
-                  return { ...task, ...updates }
+                  const shouldStampClassDate = task.type === 'class' && updates.completed === true && updates.status === 'completed'
+                  return {
+                    ...task,
+                    ...updates,
+                    ...(shouldStampClassDate ? { date: todayStr } : {})
+                  }
                 })
                 setTasks(next)
                 persistKidState({ tasks: next })
@@ -1689,77 +1599,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
           </div>
         )}
-
-        {showDailyLog && isAdmin && (
-          <div className="modal-overlay" onClick={() => setShowDailyLog(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '20px' : '30px', maxWidth: '520px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>오늘의 기록 관리</h2>
-                <button onClick={() => setShowDailyLog(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
-              </div>
-
-              <div style={{ background: '#fdf4f7', padding: '15px', borderRadius: '18px', marginBottom: '20px', border: '1px solid #ffdeeb' }}>
-                <div style={{ fontSize: '13px', fontWeight: 900, color: PRIMARY_PINK, marginBottom: '10px' }}>🎁 코인 선물하기</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input className="input-field" type="number" placeholder="코인 개수" id="giftAmount" />
-                  <input className="input-field" placeholder="메모" id="giftMemo" />
-                  <button className="btn-primary" onClick={() => {
-                    const amount = parseInt(document.getElementById('giftAmount').value, 10)
-                    const memo = document.getElementById('giftMemo').value
-                    if (amount > 0) {
-                      giftCoins(amount, memo)
-                      document.getElementById('giftAmount').value = ''
-                      document.getElementById('giftMemo').value = ''
-                    }
-                  }}>보내기</button>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 900, color: '#333', margin: '10px 0 5px' }}>기록 및 수정 요청</h3>
-                {doneLogs.filter(l => l.date === todayStr || l.editRequested).sort((a,b) => b.timestamp - a.timestamp).map(log => (
-                  <div key={log.id} style={{ background: log.editRequested ? '#fffbeb' : '#f8fafc', border: log.editRequested ? '1.5px solid #fbbf24' : '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontWeight: 900, fontSize: '14px' }}>{log.name}</span>
-                        {log.editRequested && <span style={{ fontSize: '10px', background: '#fbbf24', color: 'white', padding: '2px 6px', borderRadius: '999px', fontWeight: 900 }}>수정 요청</span>}
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
-                        {log.status === 'completed' ? '완료' : log.status === 'holiday' ? '휴강' : '결석'} · {log.coins}코인 · {log.date}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {log.taskId !== 'gift' && (
-                        <button 
-                          onClick={() => {
-                            const el = document.getElementById(`task-${log.taskId}`);
-                            if (el) {
-                              setShowDailyLog(false);
-                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              el.style.boxShadow = `0 0 20px ${PRIMARY_PINK}`;
-                              setTimeout(() => el.style.boxShadow = '', 2000);
-                            } else {
-                              alert('해당 일정을 찾을 수 없어요. 오늘 일정이 맞는지 확인해 주세요.');
-                            }
-                          }}
-                          style={{ border: '1px solid #ddd', background: 'white', color: '#666', padding: '8px', borderRadius: '10px', cursor: 'pointer' }}
-                          title="일정으로 이동"
-                        >
-                          이동
-                        </button>
-                      )}
-                      <button onClick={() => deleteDoneLog(log.id)} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }} title="기록 삭제 및 수정 승인">
-                        <Trash size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {doneLogs.filter(l => l.date === todayStr).length === 0 && <div style={{ textAlign: 'center', padding: '30px', color: '#999', fontSize: '14px' }}>오늘 기록된 활동이 없어요.</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
 
         {showAppLauncher && (
           <div className="modal-overlay" onClick={() => setShowAppLauncher(false)}>

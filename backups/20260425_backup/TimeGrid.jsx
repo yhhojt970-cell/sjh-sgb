@@ -26,7 +26,7 @@ const normalizeClassStatus = (status, completed) => {
   return ''
 }
 
-function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent }) {
+function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
   const hourTasks = useMemo(
@@ -82,7 +82,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
       <div style={{ flex: 1, minWidth: 0, padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
           <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? 0 : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)', boxSizing: 'border-box' }}>
-            <TaskCard task={task} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
+            <TaskCard task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
           </div>
         ))}
       </div>
@@ -90,7 +90,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
   )
 }
 
-function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
+function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const getTaskCoins = (targetTask) => {
     const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
     const parsedCoins = Number(targetTask?.coins)
@@ -158,11 +158,6 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const taskCoins = getTaskCoins(task)
   const canManageTask = isAdmin || task.type !== 'class'
   const [tick, setTick] = useState(Date.now())
-  
-  const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
-  const currentStatus = todayLog?.status || ''
-  const isDone = currentStatus === 'completed'
-  const editRequested = todayLog?.editRequested || false
 
   useEffect(() => {
     if (task.type === 'class' || task.completed || !actualStart) return
@@ -170,7 +165,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
     return () => clearInterval(timer)
   }, [task.type, task.completed, actualStart])
 
-  const liveDuration = isDone ? (todayLog?.durationActual || actualDuration) : (actualStart ? computeDuration(actualStart, format(new Date(tick), 'HH:mm')) : null)
+  const liveDuration = task.completed ? actualDuration : (actualStart ? computeDuration(actualStart, format(new Date(tick), 'HH:mm')) : null)
 
   const handleStartTimer = () => {
     if (actualStart) return
@@ -181,7 +176,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const handleComplete = () => {
     const nowDate = new Date()
     const now = format(nowDate, 'HH:mm')
-    const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now, coins: taskCoins }
+    const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now }
     if (actualStart) {
       const [h, m] = actualStart.split(':').map(Number)
       const startedAt = new Date()
@@ -219,13 +214,13 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
-    background: isDone ? '#f8fafc' : (isClassTask ? 'linear-gradient(135deg, #f7f9ff 0%, #f3f7ff 100%)' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)'),
+    background: task.completed ? '#f8fafc' : (isClassTask ? 'linear-gradient(135deg, #f7f9ff 0%, #f3f7ff 100%)' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)'),
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
     padding: isMobile ? '8px 10px' : '15px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
-    border: isDone ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${(task.color || PRIMARY_PINK)}20`),
+    border: task.completed ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${(task.color || PRIMARY_PINK)}20`),
     height: isMobile ? 'auto' : '100%',
     boxSizing: 'border-box',
     maxWidth: '100%'
@@ -249,7 +244,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   }
 
   return (
-    <div id={`task-${task.id}`} ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
+    <div ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: isMobile ? '6px' : '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
@@ -278,9 +273,8 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
               }}
               title={memo ? '클릭해서 메모 보기' : ''}
             >
-              {task.name} {isDone && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
+              {task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
             </div>
-            {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
               {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){isClassTask ? ` · ${taskCoins}코인` : ''}
             </div>
@@ -303,21 +297,6 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
               <Edit3 size={14} />
             </button>
-            {currentStatus && !isAdmin && (
-              <button 
-                onPointerDown={(event) => event.stopPropagation()} 
-                onClick={(event) => { 
-                  event.stopPropagation(); 
-                  if (editRequested) return;
-                  if (window.confirm('수정을 요청할까요? 엄마가 확인 후 수정할 수 있게 해줄 거예요.')) {
-                    onUpdateTask(task.id, { status: currentStatus, editRequested: true });
-                  }
-                }} 
-                style={{ color: editRequested ? '#ccc' : PRIMARY_PINK, border: `1px solid ${editRequested ? '#eee' : PRIMARY_PINK}`, background: 'white', borderRadius: '8px', padding: '4px 6px', cursor: editRequested ? 'default' : 'pointer', fontSize: '10px', fontWeight: 900 }}
-              >
-                {editRequested ? '요청됨' : '수정요청'}
-              </button>
-            )}
             <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}>
               <Trash2 size={16} />
             </button>
@@ -364,41 +343,26 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
               <button
-                onPointerDown={(event) => { 
-                  if (currentStatus) return;
-                  event.stopPropagation(); 
-                  onUpdateTask(task.id, { completed: true, status: 'completed', coins: taskCoins }) 
-                }}
+                onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: taskCoins }) }}
                 title="완료"
                 aria-label="완료"
-                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: currentStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: currentStatus === 'completed' ? 'white' : '#666', border: 'none', cursor: currentStatus ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: currentStatus && currentStatus !== 'completed' ? 0.3 : 1 }}
-                disabled={!!currentStatus}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Check size={18} />
               </button>
               <button
-                onPointerDown={(event) => { 
-                  if (currentStatus) return;
-                  event.stopPropagation(); 
-                  onUpdateTask(task.id, { completed: false, status: 'holiday' }) 
-                }}
+                onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }}
                 title="휴강"
                 aria-label="휴강"
-                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: currentStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: currentStatus === 'holiday' ? 'white' : '#666', border: 'none', cursor: currentStatus ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: currentStatus && currentStatus !== 'holiday' ? 0.3 : 1 }}
-                disabled={!!currentStatus}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <CalendarX size={18} />
               </button>
               <button
-                onPointerDown={(event) => { 
-                  if (currentStatus) return;
-                  event.stopPropagation(); 
-                  onUpdateTask(task.id, { completed: false, status: 'absent' }) 
-                }}
+                onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }}
                 title="결석"
                 aria-label="결석"
-                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: currentStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: currentStatus === 'absent' ? 'white' : '#666', border: 'none', cursor: currentStatus ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: currentStatus && currentStatus !== 'absent' ? 0.3 : 1 }}
-                disabled={!!currentStatus}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <UserX size={18} />
               </button>
@@ -406,14 +370,14 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           </div>
         ) : (
           <>
-            {!isDone && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
-            {actualStart && !isDone && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>공부중</button>}
-            {isDone && (
+            {!task.completed && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
+            {actualStart && !task.completed && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>공부중</button>}
+            {task.completed && (
               <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
-                {actualStart && (todayLog?.endTimeActual || actualEnd) ? `✨ ${actualStart} ~ ${todayLog?.endTimeActual || actualEnd} (${liveDuration ?? '-'}분)` : '✨ 완료'}
+                {actualStart && actualEnd ? `✨ ${actualStart} ~ ${actualEnd} (${actualDuration ?? '-'}분)` : '✨ 완료'}
               </div>
             )}
-            {!isDone && actualStart && (
+            {!task.completed && actualStart && (
               <div style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold', lineHeight: 1.2 }}>
                 ⏱ 진행 중 {liveDuration ?? 0}분
               </div>
@@ -425,7 +389,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   )
 }
 
-export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
+export default function TimeGrid({ tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
   const hours = useMemo(() => {
     const taskHours = (tasks || [])
       .map((task) => {
@@ -444,7 +408,7 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
         </div>
         <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
           {essentialChecklist.map((item) => {
-            const isDone = doneLogs.some((log) => log.name.includes(item.name) && log.status === 'completed')
+            const isDone = tasks.some((task) => task.name.includes(item.name) && task.completed)
             return (
               <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: isDone ? LIGHT_PINK : '#fff', border: isDone ? `1px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: isDone ? PRIMARY_PINK : '#999', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 {isDone ? <Heart size={12} fill={PRIMARY_PINK} color={PRIMARY_PINK} /> : null}
@@ -457,7 +421,7 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
 
       <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         {hours.map((hour) => (
-          <TimeSlot key={hour} hour={hour} tasks={tasks} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} />
+          <TimeSlot key={hour} hour={hour} tasks={tasks} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} />
         ))}
       </div>
     </div>
