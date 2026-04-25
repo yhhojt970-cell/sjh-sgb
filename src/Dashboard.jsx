@@ -131,6 +131,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
   const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
   const [showDailyLog, setShowDailyLog] = useState(false)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [viewMonth, setViewMonth] = useState(new Date())
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50, scope: 'shared', kidId: '' })
   const [newEssential, setNewEssential] = useState('')
@@ -427,10 +429,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     return task?.type === 'study' ? 1 : 0
   }
 
-  const availableCoins = useMemo(
-    () => doneLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0) - spentCoins,
-    [doneLogs, spentCoins]
-  )
+  const availableCoins = useMemo(() => {
+    const logCoins = doneLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0)
+    // Legacy support: count tasks that are completed but not in doneLogs
+    const legacyCoins = tasks
+      .filter((task) => task.completed && task.date && !doneLogs.some((log) => String(log.taskId) === String(task.id) && log.date === task.date))
+      .reduce((sum, task) => sum + getTaskCoins(task), 0)
+    return logCoins + legacyCoins - spentCoins
+  }, [doneLogs, tasks, spentCoins])
 
   const weekMonthReport = useMemo(() => {
     const year = selectedDate.getFullYear()
@@ -445,14 +451,24 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       const date = new Date(log.date)
       return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === month
     })
+
+    const legacyCompleted = tasks.filter((task) => task.completed && task.date && !doneLogs.some((log) => String(log.taskId) === String(task.id) && log.date === task.date))
+    const weekLegacy = legacyCompleted.filter((task) => {
+      const date = new Date(task.date)
+      return !Number.isNaN(date.getTime()) && format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd') === currentWeek
+    })
+    const monthLegacy = legacyCompleted.filter((task) => {
+      const date = new Date(task.date)
+      return !Number.isNaN(date.getTime()) && date.getFullYear() === year && date.getMonth() === month
+    })
     
     return {
-      weekCoins: weekLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0),
-      weekCount: weekLogs.length,
-      monthCoins: monthLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0),
-      monthCount: monthLogs.length
+      weekCoins: weekLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0) + weekLegacy.reduce((sum, task) => sum + getTaskCoins(task), 0),
+      weekCount: weekLogs.length + weekLegacy.length,
+      monthCoins: monthLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0) + monthLegacy.reduce((sum, task) => sum + getTaskCoins(task), 0),
+      monthCount: monthLogs.length + monthLegacy.length
     }
-  }, [doneLogs, selectedDate])
+  }, [doneLogs, tasks, selectedDate])
 
   const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -1221,11 +1237,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         <div style={{ ...glassStyle, borderRadius: '24px', padding: isMobile ? '15px' : '20px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: isMobile ? '15px' : '20px', marginBottom: '15px' }}>
-            <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronLeft size={isMobile ? 24 : 28} /></button>
-            <div style={{ fontWeight: 900, fontSize: isMobile ? '18px' : '22px', display: 'flex', alignItems: 'center', gap: '8px', color: '#333' }}>
+            <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}><ChevronLeft size={isMobile ? 24 : 28} /></button>
+            <div 
+              onClick={() => { setViewMonth(selectedDate); setShowDatePicker(true); }}
+              style={{ fontWeight: 900, fontSize: isMobile ? '18px' : '22px', display: 'flex', alignItems: 'center', gap: '8px', color: '#333', cursor: 'pointer', padding: '4px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.4)', transition: 'all 0.2s' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.7)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.4)'}
+            >
               <Calendar size={20} color={PRIMARY_PINK} /> {format(selectedDate, 'yyyy년 MM월')}
             </div>
-            <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK }}><ChevronRight size={isMobile ? 24 : 28} /></button>
+            <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}><ChevronRight size={isMobile ? 24 : 28} /></button>
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
             {weekDays.map((day) => (
@@ -1877,6 +1898,53 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+        {showDatePicker && (
+          <div className="modal-overlay" onClick={() => setShowDatePicker(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '20px', maxWidth: '350px', width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                <button onClick={() => setViewMonth(subDays(startOfMonth(viewMonth), 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}><ChevronLeft size={20} /></button>
+                <div style={{ fontWeight: 900, fontSize: '16px' }}>{format(viewMonth, 'yyyy년 MM월')}</div>
+                <button onClick={() => setViewMonth(addDays(endOfMonth(viewMonth), 1))} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}><ChevronRight size={20} /></button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center' }}>
+                {['일', '월', '화', '수', '목', '금', '토'].map(d => <div key={d} style={{ fontSize: '11px', color: '#999', fontWeight: 'bold', padding: '5px 0' }}>{d}</div>)}
+                {(() => {
+                  const start = startOfWeek(startOfMonth(viewMonth));
+                  const end = endOfWeek(endOfMonth(viewMonth));
+                  const days = [];
+                  let curr = start;
+                  while (curr <= end) {
+                    const day = curr;
+                    const isToday = isSameDay(day, new Date());
+                    const isSelected = isSameDay(day, selectedDate);
+                    const isCurrentMonth = isSameMonth(day, viewMonth);
+                    days.push(
+                      <button
+                        key={day.toString()}
+                        onClick={() => { setSelectedDate(day); setShowDatePicker(false); }}
+                        style={{
+                          border: 'none',
+                          background: isSelected ? PRIMARY_PINK : isToday ? LIGHT_PINK : 'transparent',
+                          color: isSelected ? 'white' : isCurrentMonth ? (getDay(day) === 0 ? '#ef4444' : getDay(day) === 6 ? '#3b82f6' : '#333') : '#ccc',
+                          borderRadius: '10px',
+                          padding: '8px 0',
+                          fontSize: '13px',
+                          fontWeight: isSelected || isToday ? '900' : 'normal',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {format(day, 'd')}
+                      </button>
+                    );
+                    curr = addDays(curr, 1);
+                  }
+                  return days;
+                })()}
+              </div>
+              <button onClick={() => { setSelectedDate(new Date()); setShowDatePicker(false); }} style={{ marginTop: '15px', width: '100%', border: '1px solid #eee', background: '#f8fafc', borderRadius: '12px', padding: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>오늘로 이동</button>
             </div>
           </div>
         )}

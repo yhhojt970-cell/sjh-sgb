@@ -161,7 +161,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   
   const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
   const currentStatus = todayLog?.status || ''
-  const isDone = currentStatus === 'completed'
+  const isDone = currentStatus === 'completed' || (task.completed && task.date === todayStr)
   const editRequested = todayLog?.editRequested || false
 
   useEffect(() => {
@@ -410,7 +410,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             {actualStart && !isDone && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>공부중</button>}
             {isDone && (
               <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
-                {actualStart && (todayLog?.endTimeActual || actualEnd) ? `✨ ${actualStart} ~ ${todayLog?.endTimeActual || actualEnd} (${liveDuration ?? '-'}분)` : '✨ 완료'}
+                {actualStart && (todayLog?.endTimeActual || task.endTimeActual || actualEnd) ? `✨ ${actualStart} ~ ${todayLog?.endTimeActual || task.endTimeActual || actualEnd} (${liveDuration ?? '-'}분)` : '✨ 완료'}
               </div>
             )}
             {!isDone && actualStart && (
@@ -444,7 +444,8 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
         </div>
         <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
           {essentialChecklist.map((item) => {
-            const isDone = doneLogs.some((log) => log.name.includes(item.name) && log.status === 'completed')
+            const isDone = doneLogs.some((log) => log.name.includes(item.name) && log.status === 'completed') || 
+                           tasks.some((task) => task.name.includes(item.name) && task.completed && task.date === todayStr)
             return (
               <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: isDone ? LIGHT_PINK : '#fff', border: isDone ? `1px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: isDone ? PRIMARY_PINK : '#999', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 {isDone ? <Heart size={12} fill={PRIMARY_PINK} color={PRIMARY_PINK} /> : null}
