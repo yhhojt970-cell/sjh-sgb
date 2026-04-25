@@ -27,6 +27,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  const [testKidId, setTestKidId] = useState('')
 
   const unsubRef = useRef({ profile: null, household: null })
 
@@ -131,6 +132,24 @@ export default function App() {
     return mappedName ? { id: mappedName, role: resolvedRole, loginId } : null
   }, [profile])
 
+  const childAccounts = useMemo(
+    () => Object.entries(allUsers).filter(([, info]) => info?.role === 'child'),
+    [allUsers]
+  )
+
+  const effectiveUser = useMemo(() => {
+    if (!user || user.role !== 'admin' || !testKidId) return user
+    const kid = allUsers[testKidId]
+    if (!kid) return user
+    return {
+      id: kid.name,
+      role: 'child',
+      loginId: testKidId,
+      testMode: true,
+      adminLoginId: user.loginId
+    }
+  }, [user, testKidId, allUsers])
+
   const handleLogin = async () => {
     const loginId = (selectedId || '').trim()
     if (!loginId || !password) return
@@ -147,6 +166,7 @@ export default function App() {
   }
 
   const handleLogout = async () => {
+    setTestKidId('')
     await signOut(auth)
     setPassword('')
     setSelectedId('')
@@ -223,11 +243,43 @@ export default function App() {
   return (
     <div style={globalBgStyle}>
       <Dashboard
-        user={user}
+        user={effectiveUser}
         onLogout={handleLogout}
         allUsers={allUsers}
         cloud={{ db, householdId: profile?.householdId || HOUSEHOLD_ID }}
       />
+      {user?.role === 'admin' ? (
+        <div style={{ position: 'fixed', left: 14, bottom: 14, zIndex: 1200, background: 'white', border: '1px solid #ffdeeb', borderRadius: '16px', padding: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.12)', maxWidth: 'calc(100vw - 28px)' }}>
+          {testKidId ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 900, color: '#ff4d6d' }}>
+                {allUsers[testKidId]?.displayName || allUsers[testKidId]?.name || '아이'} 화면 테스트 중
+              </span>
+              <button
+                type="button"
+                onClick={() => setTestKidId('')}
+                style={{ border: 'none', background: '#fff0f3', color: '#ff4d6d', borderRadius: '10px', padding: '7px 10px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+              >
+                엄마 화면으로
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 900, color: '#64748b' }}>아이 화면 테스트</span>
+              {childAccounts.map(([kidId, info]) => (
+                <button
+                  key={`test-${kidId}`}
+                  type="button"
+                  onClick={() => setTestKidId(kidId)}
+                  style={{ border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '10px', padding: '7px 10px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+                >
+                  {info.displayName || info.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

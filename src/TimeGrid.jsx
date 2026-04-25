@@ -84,7 +84,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
 
 function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const getTaskCoins = (targetTask) => {
-    if (!targetTask || targetTask.type === 'class') return 0
+    if (!targetTask) return 0
     const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
     const parsedCoins = Number(targetTask?.coins)
     if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
@@ -199,7 +199,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
       memo: draftMemo.trim(),
       note: draftMemo.trim(),
       color: draftColor || task.color || PRIMARY_PINK,
-      coins: isClassTask ? 0 : Math.max(0, Number(draftCoins || 0)),
+      coins: Math.max(0, Number(draftCoins || 0)),
       startDate: draftStartDate || null,
       endDate: draftEndDate || null,
       classStartDate: draftStartDate || null,
@@ -330,11 +330,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
             <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer' }} />
-            {isClassTask ? (
-              <div style={{ flex: 1, height: '42px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 900, color: '#64748b' }}>고정수업 0코인</div>
-            ) : (
-              <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
-            )}
+            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>

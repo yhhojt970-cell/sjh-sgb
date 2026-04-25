@@ -78,6 +78,7 @@ const getSubjectCoins = (subject) => {
 const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
   const parsedWeekday = Number(typeof weekday === 'number' ? weekday : parseWeekday(weekday))
   const parsedDuration = parseInt(duration, 10)
+  const parsedCoins = Number(coins)
   const normalizedStartTime = normalizeStartTime(startTime)
   const trimmedName = String(name || '').trim()
   const trimmedMemo = String(memo || '').trim()
@@ -105,7 +106,7 @@ const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = 
     endDate: trimmedEndDate || null,
     classStartDate: trimmedStartDate || null,
     classEndDate: trimmedEndDate || null,
-    coins: 0
+    coins: Number.isNaN(parsedCoins) ? 0 : Math.max(0, parsedCoins)
   }
 }
 
@@ -496,6 +497,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     () =>
       tasks.filter((task) => {
         if (task.type !== 'class') return task.date === todayStr
+        const classStart = task.startDate || task.classStartDate || ''
+        const classEnd = task.endDate || task.classEndDate || ''
+        if (classStart && todayStr < classStart) return false
+        if (classEnd && todayStr > classEnd) return false
         if (task.weekday !== undefined && task.weekday !== null && task.weekday !== '') {
           return Number(task.weekday) === getDay(selectedDate)
         }
@@ -506,7 +511,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   )
 
   const getTaskCoins = (task) => {
-    if (!task || task.type === 'class') return 0
+    if (!task) return 0
     const hasCoins = task?.coins !== undefined && task?.coins !== null && task?.coins !== ''
     const parsedCoins = Number(task?.coins)
     if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
@@ -716,7 +721,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const currentTasks = allTasksByKid[kidId] || (kidId === activeKidId ? tasks : [])
     const targetTask = currentTasks.find(t => String(t.id) === String(taskId))
     if (!targetTask) return
-    const normalizedPatch = targetTask.type === 'class' ? { ...patch, coins: 0 } : patch
+    const normalizedPatch = { ...patch }
+    if (normalizedPatch.coins !== undefined) {
+      const parsedCoins = Number(normalizedPatch.coins)
+      normalizedPatch.coins = Number.isNaN(parsedCoins) ? getTaskCoins(targetTask) : Math.max(0, parsedCoins)
+    }
 
     let nextTasks = currentTasks
     const nowStr = format(new Date(), 'yyyy-MM-dd')
@@ -757,7 +766,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
     if (kidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
 
-    if (targetTask.type !== 'class' && patch.coins !== undefined && Number(patch.coins) !== getTaskCoins(targetTask)) {
+    if (patch.coins !== undefined && Number(patch.coins) !== getTaskCoins(targetTask)) {
       await appendCoinLog({
         kidId,
         subjectName: `고정수업 코인 수정: ${targetTask.name} (${scope})`,
@@ -1169,7 +1178,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
             <input className="input-field" type="number" min="1" placeholder="시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
-            <div style={{ height: '42px', border: '1px solid #ffe1ea', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 900, color: '#64748b', background: '#f8fafc' }}>고정수업 0코인</div>
+            <input className="input-field" type="number" min="0" placeholder="코인" value={manualClass.coins} onChange={(event) => patchManualClass({ coins: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
             <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} title="시작일" />
@@ -1185,13 +1194,66 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         {showBulk ? (
         <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '10px' }}>
           <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '6px', color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</div>
-          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>이름[TAB]요일[TAB]과목[TAB]시간[TAB]분[TAB]시작일(선택)... 고정수업은 항상 0코인입니다.</div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>이름[TAB]요일[TAB]과목[TAB]시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)[TAB]코인(선택)</div>
           <textarea className="input-field" value={bulkInput} onChange={(event) => { setBulkInput(event.target.value); if (classAddStatus) setClassAddStatus('') }} style={{ minHeight: '80px', fontSize: '11px', marginBottom: '6px' }} placeholder="여기에 엑셀 데이터를 붙여넣으세요" />
           <button className="btn-primary" style={{ width: '100%', height: '36px', fontSize: '13px' }} onClick={handleBulkAdd}>일괄 등록</button>
         </div>
         ) : null}
       </div>
     )
+  }
+
+  const askFixedClassScope = () => {
+    const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
+    if (scopePrompt === null) return null
+    return scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
+  }
+
+  const promptFixedClassPatch = (task) => {
+    const nextName = prompt('수업 이름', task.name || '')
+    if (nextName === null) return null
+    const safeName = nextName.trim()
+    if (!safeName) return null
+
+    const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
+    const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
+    if (weekdayRaw === null) return null
+    const parsedWeekday = parseInt(weekdayRaw, 10)
+    const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
+
+    const nextStartRaw = prompt('시작 시간', task.startTime || '09:00')
+    if (nextStartRaw === null) return null
+    const nextStart = normalizeStartTime(nextStartRaw) || task.startTime || '09:00'
+
+    const durationRaw = prompt('수업 시간(분)', String(task.duration || DEFAULT_DURATION))
+    if (durationRaw === null) return null
+    const nextDuration = Math.max(1, parseInt(durationRaw, 10) || Number(task.duration || DEFAULT_DURATION))
+
+    const coinsRaw = prompt('코인', String(getTaskCoins(task)))
+    if (coinsRaw === null) return null
+    const nextCoins = Math.max(0, parseInt(coinsRaw, 10) || 0)
+
+    const nextStartDate = prompt('시작일(비우면 제한 없음)', task.startDate || task.classStartDate || '')
+    if (nextStartDate === null) return null
+    const nextEndDate = prompt('종료일(비우면 제한 없음)', task.endDate || task.classEndDate || '')
+    if (nextEndDate === null) return null
+    const nextMemo = prompt('메모(선택)', task.memo || task.note || '')
+    if (nextMemo === null) return null
+
+    return {
+      name: safeName,
+      weekday: nextWeekday,
+      startTime: nextStart,
+      duration: nextDuration,
+      expectedEndTime: buildExpectedEndTime(nextStart, nextDuration),
+      coins: nextCoins,
+      startDate: nextStartDate.trim() || null,
+      endDate: nextEndDate.trim() || null,
+      classStartDate: nextStartDate.trim() || null,
+      classEndDate: nextEndDate.trim() || null,
+      memo: nextMemo.trim(),
+      note: nextMemo.trim()
+    }
   }
 
   const renderFixedClassListPanel = () => (
@@ -1218,38 +1280,43 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 {isOpen ? (
                   <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
                     {classItems.map((task) => (
-                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분) · 0코인
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            <span>{weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
+                            <span>·</span>
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={getTaskCoins(task)}
+                              onBlur={async (event) => {
+                                const nextCoins = Math.max(0, parseInt(event.target.value, 10) || 0)
+                                if (nextCoins === getTaskCoins(task)) return
+                                const scope = askFixedClassScope()
+                                if (!scope) {
+                                  event.target.value = String(getTaskCoins(task))
+                                  return
+                                }
+                                await updateFixedClassTask(kidId, task.id, { coins: nextCoins }, scope)
+                              }}
+                              style={{ width: '46px', height: '22px', border: '1px solid #ffe1ea', borderRadius: '6px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: PRIMARY_PINK }}
+                              title="코인 수정"
+                            />
+                            <span>코인</span>
+                            {(task.startDate || task.classStartDate || task.endDate || task.classEndDate) ? (
+                              <span style={{ color: '#94a3b8' }}>({task.startDate || task.classStartDate || '시작 제한 없음'} ~ {task.endDate || task.classEndDate || '종료 제한 없음'})</span>
+                            ) : null}
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button
                             onClick={async () => {
-                              const nextName = prompt('수업 이름', task.name || '')
-                              if (!nextName) return
-                              const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
-                              const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
-                              if (weekdayRaw === null) return
-                              const parsedWeekday = parseInt(weekdayRaw, 10)
-                              const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
-                              
-                              const nextStart = prompt('시업 시간', task.startTime || '09:00')
-                              if (nextStart === null) return
-                              const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 60)), 10) || 60
-                              const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
-                              const scope = scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
-
-                              await updateFixedClassTask(kidId, task.id, {
-                                name: nextName.trim(),
-                                weekday: nextWeekday,
-                                startTime: nextStart,
-                                duration: nextDuration,
-                                expectedEndTime: buildExpectedEndTime(nextStart, nextDuration),
-                                coins: 0
-                              }, scope)
+                              const patch = promptFixedClassPatch(task)
+                              if (!patch) return
+                              const scope = askFixedClassScope()
+                              if (!scope) return
+                              await updateFixedClassTask(kidId, task.id, patch, scope)
                             }}
                             style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                           >
@@ -1505,7 +1572,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     } else {
                       const nextStatus = updates.status !== undefined ? updates.status : (existingLog?.status || (updates.completed ? 'completed' : ''))
                       const isCompleted = nextStatus === 'completed' || updates.completed === true
-                      const earnedCoins = task.type === 'class' ? 0 : (isCompleted ? Number(updates.coins ?? getTaskCoins(task)) : 0)
+                      const earnedCoins = isCompleted ? Number(updates.coins ?? getTaskCoins(task)) : 0
                       const newLog = {
                         ...(existingLog || {}),
                         id: logId,
