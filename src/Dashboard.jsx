@@ -11,6 +11,7 @@ import {
   Gift,
   LayoutGrid,
   LogOut,
+  MessageSquare,
   PiggyBank,
   Plus,
   Send,
@@ -20,7 +21,7 @@ import {
   Users,
   X as CloseIcon
 } from 'lucide-react'
-import { addDays, format, getDay, isSameDay, startOfWeek, subDays } from 'date-fns'
+import { addDays, endOfMonth, endOfWeek, format, getDay, isSameMonth, isSameDay, startOfMonth, startOfWeek, subDays } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { updatePassword } from 'firebase/auth'
 import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
@@ -1322,9 +1323,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         status: updates.status || (updates.completed ? 'completed' : ''),
                         coins: updates.completed ? (updates.coins !== undefined ? updates.coins : getTaskCoins(task)) : 0,
                         timestamp: Date.now(),
-                        startTimeActual: updates.startTimeActual || '',
-                        endTimeActual: updates.endTimeActual || '',
-                        durationActual: updates.durationActual || 0
+                        startTimeActual: updates.startTimeActual || task.startTimeActual || task.actualStartTime || '',
+                        endTimeActual: updates.endTimeActual || task.endTimeActual || task.actualEndTime || '',
+                        durationActual: updates.durationActual || task.durationActual || task.actualDuration || 0,
+                        editRequested: updates.editRequested || false
                       }
                       nextLogs = [...doneLogs.filter((l) => l.id !== logId), newLog]
                     }
@@ -1738,7 +1740,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
               <div style={{ display: 'grid', gap: '10px' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: 900, color: '#333', margin: '10px 0 5px' }}>기록 및 수정 요청</h3>
-                {doneLogs.filter(l => l.date === todayStr || l.editRequested).sort((a,b) => b.timestamp - a.timestamp).map(log => (
+                {[
+                  ...doneLogs.filter(l => l.date === todayStr || l.editRequested).map(l => ({ ...l, logType: 'activity' })),
+                  ...allowanceEntries.filter(e => e.date === todayStr).map(e => ({ ...e, logType: 'allowance', name: `[용돈기입장] ${e.title}`, coins: e.amount }))
+                ].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0)).map(log => (
                   <div key={log.id} style={{ background: log.editRequested ? '#fffbeb' : '#f8fafc', border: log.editRequested ? '1.5px solid #fbbf24' : '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1746,11 +1751,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         {log.editRequested && <span style={{ fontSize: '10px', background: '#fbbf24', color: 'white', padding: '2px 6px', borderRadius: '999px', fontWeight: 900 }}>수정 요청</span>}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
-                        {log.status === 'completed' ? '완료' : log.status === 'holiday' ? '휴강' : '결석'} · {log.coins}코인 · {log.date}
+                        {log.logType === 'allowance' ? (log.type === 'income' ? '수입' : '지출') : (log.status === 'completed' ? '완료' : log.status === 'holiday' ? '휴강' : '결석')} · {log.coins}코인 · {log.date}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      {log.taskId !== 'gift' && (
+                      {log.logType === 'activity' && log.taskId !== 'gift' && (
                         <button 
                           onClick={() => {
                             const el = document.getElementById(`task-${log.taskId}`);
@@ -1769,13 +1774,23 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                           이동
                         </button>
                       )}
-                      <button onClick={() => deleteDoneLog(log.id)} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }} title="기록 삭제 및 수정 승인">
+                      <button onClick={() => {
+                        if (log.logType === 'allowance') {
+                          if (window.confirm('이 용돈 내역을 삭제할까요?')) {
+                            const next = allowanceEntries.filter(e => e.id !== log.id);
+                            setAllowanceEntries(next);
+                            persistKidState({ allowanceEntries: next });
+                          }
+                        } else {
+                          deleteDoneLog(log.id);
+                        }
+                      }} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }} title="삭제">
                         <Trash size={16} />
                       </button>
                     </div>
                   </div>
                 ))}
-                {doneLogs.filter(l => l.date === todayStr).length === 0 && <div style={{ textAlign: 'center', padding: '30px', color: '#999', fontSize: '14px' }}>오늘 기록된 활동이 없어요.</div>}
+                {doneLogs.filter(l => l.date === todayStr).length === 0 && allowanceEntries.filter(e => e.date === todayStr).length === 0 && <div style={{ textAlign: 'center', padding: '30px', color: '#999', fontSize: '14px' }}>오늘 기록된 활동이 없어요.</div>}
               </div>
             </div>
           </div>
