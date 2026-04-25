@@ -62,9 +62,10 @@ const parseWeekday = (raw) => {
   return map[value]
 }
 
-const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '' }) => {
+const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
   const parsedWeekday = Number(typeof weekday === 'number' ? weekday : parseWeekday(weekday))
   const parsedDuration = parseInt(duration, 10)
+  const parsedCoins = Math.max(0, Number(coins || 0))
   const normalizedStartTime = normalizeStartTime(startTime)
   const trimmedName = String(name || '').trim()
   const trimmedMemo = String(memo || '').trim()
@@ -91,7 +92,8 @@ const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = 
     startDate: trimmedStartDate || null,
     endDate: trimmedEndDate || null,
     classStartDate: trimmedStartDate || null,
-    classEndDate: trimmedEndDate || null
+    classEndDate: trimmedEndDate || null,
+    coins: Number.isNaN(parsedCoins) ? 0 : parsedCoins
   }
 }
 
@@ -149,6 +151,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     name: '',
     startTime: '16:00',
     duration: DEFAULT_DURATION,
+    coins: 0,
     startDate: '',
     endDate: '',
     memo: ''
@@ -313,6 +316,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [isCloud, cloud?.db, cloud?.householdId])
 
+  const handleDeleteApp = async (appId) => {
+    if (!window.confirm('이 앱을 삭제할까요?')) return
+    const next = studyApps.filter((a) => a.id !== appId)
+    await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', 'apps'), { apps: next, updatedAt: serverTimestamp() }, { merge: true })
+  }
+
   const persistKidState = async (overrides = {}) => {
     if (!isCloud || !resolvedKidDocId) return
     await setDoc(
@@ -361,10 +370,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     [tasks, selectedDate, todayStr]
   )
 
-  const getTaskCoins = (task) => Number(task.coins || (task.type === 'study' ? 1 : 0))
+  const getTaskCoins = (task) => {
+    const hasCoins = task?.coins !== undefined && task?.coins !== null && task?.coins !== ''
+    const parsedCoins = Number(task?.coins)
+    if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
+    return task?.type === 'study' ? 1 : 0
+  }
 
   const availableCoins = useMemo(
-    () => tasks.filter((task) => task.completed && task.type !== 'class').reduce((sum, task) => sum + getTaskCoins(task), 0) - spentCoins,
+    () => tasks.filter((task) => task.completed && getTaskCoins(task) > 0).reduce((sum, task) => sum + getTaskCoins(task), 0) - spentCoins,
     [tasks, spentCoins]
   )
 
@@ -372,7 +386,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const year = selectedDate.getFullYear()
     const month = selectedDate.getMonth()
     const currentWeek = format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const completed = tasks.filter((task) => task.completed && task.type !== 'class' && task.date)
+    const completed = tasks.filter((task) => task.completed && task.date && getTaskCoins(task) > 0)
     const weekTasks = completed.filter((task) => {
       const date = new Date(task.date)
       return !Number.isNaN(date.getTime()) && format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd') === currentWeek
@@ -430,7 +444,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const buildCoinEntriesFromTasks = (taskList = []) => {
     return (taskList || [])
-      .filter((task) => task.completed && task.type !== 'class' && getTaskCoins(task) > 0)
+      .filter((task) => task.completed && getTaskCoins(task) > 0)
       .map((task) => ({
         id: task.id || `${task.name}-${task.date || ''}-${task.startTime || ''}`,
         date: task.date || '',
@@ -692,8 +706,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const kidData = snap.data() || {}
     const kidTasks = Array.isArray(kidData.tasks) ? kidData.tasks : []
     const completedCoins = kidTasks
-      .filter((task) => task.completed && task.type !== 'class')
-      .reduce((sum, task) => sum + Number(task.coins || (task.type === 'study' ? 1 : 0)), 0)
+      .filter((task) => task.completed && getTaskCoins(task) > 0)
+      .reduce((sum, task) => sum + getTaskCoins(task), 0)
     const currentSpent = Number(kidData.spentCoins || 0)
     const currentAvailable = completedCoins - currentSpent
     if (currentAvailable < reward.coins) {
@@ -769,7 +783,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       const cols = line.includes('\t') ? line.split('\t') : line.split(',').map((c) => c.trim())
       if (cols.length < 5) return
 
-      const [kidRaw, dayRaw, subjectRaw, timeRaw, durationRaw, startDateRaw = '', endDateRaw = '', memoRaw = ''] = cols
+      const [kidRaw, dayRaw, subjectRaw, timeRaw, durationRaw, startDateRaw = '', endDateRaw = '', memoRaw = '', coinsRaw = '0'] = cols
       const kidId = kidsList.find((id) => {
         const name = getFullName(id)
         return name.includes(kidRaw) || kidRaw.includes(name)
@@ -782,7 +796,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         duration: durationRaw,
         startDate: startDateRaw,
         endDate: endDateRaw,
-        memo: memoRaw
+        memo: memoRaw,
+        coins: coinsRaw
       })
       if (!task) return
 
@@ -818,6 +833,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       kidId: targetKidId,
       name: '',
       memo: '',
+      coins: 0,
       startDate: '',
       endDate: ''
     }))
@@ -870,48 +886,47 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const selectedManualKidId = manualClass.kidId || activeKidId || kidsList[0] || ''
 
     return (
-      <div style={{ display: 'grid', gap: '14px' }}>
-        <div>
-          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>한 건 입력</div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-            <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })}>
+      <div style={{ display: 'grid', gap: '10px' }}>
+        <div style={{ background: '#fff9fb', border: '1px solid #ffe1ea', borderRadius: '18px', padding: '12px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px', color: PRIMARY_PINK }}>한 건 입력</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+            <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })} style={{ fontSize: '12px', height: '36px' }}>
               <option value="" disabled>아이 선택</option>
               {kidsList.map((kidId) => (
                 <option key={kidId} value={kidId}>{getFullName(kidId)}</option>
               ))}
             </select>
-            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })}>
+            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })} style={{ fontSize: '12px', height: '36px' }}>
               {weekdayLabels.map((label, index) => (
                 <option key={label} value={String(index)}>{label}요일</option>
               ))}
             </select>
-            <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} />
-            <input className="input-field" type="time" value={manualClass.startTime} onChange={(event) => patchManualClass({ startTime: event.target.value })} />
-            <input className="input-field" type="number" min="1" placeholder="수업 시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
-              시작일
-              <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
-              종료일
-              <input className="input-field" type="date" value={manualClass.endDate} onChange={(event) => patchManualClass({ endDate: event.target.value })} />
-            </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: '6px', marginBottom: '6px' }}>
+            <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
+            <input className="input-field" type="time" value={manualClass.startTime} onChange={(event) => patchManualClass({ startTime: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
           </div>
-          <textarea className="input-field" placeholder="메모 (선택)" value={manualClass.memo} onChange={(event) => patchManualClass({ memo: event.target.value })} style={{ minHeight: '68px', marginBottom: '8px' }} />
-          <button className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', opacity: selectedManualKidId ? 1 : 0.55, cursor: selectedManualKidId ? 'pointer' : 'not-allowed' }} onClick={handleManualClassAdd} disabled={!selectedManualKidId}>
-            <Plus size={16} /> 한 건 등록
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+            <input className="input-field" type="number" min="1" placeholder="시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
+            <input className="input-field" type="number" min="0" placeholder="코인" value={manualClass.coins} onChange={(event) => patchManualClass({ coins: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+            <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} style={{ fontSize: '12px', height: '36px' }} title="시작일" />
+            <input className="input-field" type="date" value={manualClass.endDate} onChange={(event) => patchManualClass({ endDate: event.target.value })} style={{ fontSize: '12px', height: '36px' }} title="종료일" />
+          </div>
+          <textarea className="input-field" placeholder="메모 (선택)" value={manualClass.memo} onChange={(event) => patchManualClass({ memo: event.target.value })} style={{ minHeight: '40px', fontSize: '12px', marginBottom: '6px', padding: '8px' }} />
+          <button className="btn-primary" style={{ width: '100%', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', opacity: selectedManualKidId ? 1 : 0.55, cursor: selectedManualKidId ? 'pointer' : 'not-allowed', fontSize: '13px' }} onClick={handleManualClassAdd} disabled={!selectedManualKidId}>
+            <Plus size={14} /> 한 건 등록
           </button>
-          {classAddStatus ? <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>{classAddStatus}</div> : null}
+          {classAddStatus ? <div style={{ marginTop: '6px', fontSize: '11px', fontWeight: 800, color: '#16a34a', textAlign: 'center' }}>{classAddStatus}</div> : null}
         </div>
 
         {showBulk ? (
-        <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>엑셀 붙여넣기 등록</div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</div>
-          <textarea className="input-field" value={bulkInput} onChange={(event) => { setBulkInput(event.target.value); if (classAddStatus) setClassAddStatus('') }} style={{ minHeight: '120px', marginBottom: '8px' }} />
-          <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+        <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '10px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '6px', color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>이름[TAB]요일[TAB]과목[TAB]시간[TAB]분[TAB]시작일(선택)...</div>
+          <textarea className="input-field" value={bulkInput} onChange={(event) => { setBulkInput(event.target.value); if (classAddStatus) setClassAddStatus('') }} style={{ minHeight: '80px', fontSize: '11px', marginBottom: '6px' }} placeholder="여기에 엑셀 데이터를 붙여넣으세요" />
+          <button className="btn-primary" style={{ width: '100%', height: '36px', fontSize: '13px' }} onClick={handleBulkAdd}>일괄 등록</button>
         </div>
         ) : null}
       </div>
@@ -945,7 +960,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
                         <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                          {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+                          {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분) · {getTaskCoins(task)}코인
                         </div>
                         <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
                           <button
@@ -959,6 +974,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                               if (!nextStart) return
                               const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
                               if (Number.isNaN(nextDuration) || nextDuration <= 0) return
+                              const coinsRaw = prompt('완료 코인', String(getTaskCoins(task)))
+                              if (coinsRaw === null) return
+                              const parsedCoins = Number(coinsRaw || 0)
+                              if (Number.isNaN(parsedCoins)) return
+                              const nextCoins = Math.max(0, parsedCoins)
                               const parsedWeekday = parseInt(weekdayRaw, 10)
                               const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
                               await updateFixedClassTask(kidId, task.id, {
@@ -966,7 +986,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                 weekday: nextWeekday,
                                 startTime: nextStart,
                                 duration: nextDuration,
-                                expectedEndTime: buildExpectedEndTime(nextStart, nextDuration)
+                                expectedEndTime: buildExpectedEndTime(nextStart, nextDuration),
+                                coins: nextCoins
                               })
                             }}
                             style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
@@ -1109,7 +1130,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <button onClick={() => setShowAppLauncher(true)} className="header-btn-original" title="학습 앱">
                 <LayoutGrid size={isMobile ? 18 : 22} />
               </button>
-              <button onClick={() => setShowAllowanceBook(true)} className="header-btn-original" title="용돈기입장">
+              <button onClick={() => setShowAllowanceBook(true)} className="header-btn-original" title={`${getFullName(activeKidId)} 용돈기입장`}>
                 <PiggyBank size={isMobile ? 18 : 22} />
               </button>
               <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22} /></button>
@@ -1181,7 +1202,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               isMobile={isMobile}
               essentialChecklist={essentials}
               onUpdateTask={(id, updates) => {
-                const next = tasks.map((task) => (task.id === id ? { ...task, ...updates } : task))
+                const next = tasks.map((task) => {
+                  if (task.id !== id) return task
+                  const shouldStampClassDate = task.type === 'class' && updates.completed === true && updates.status === 'completed'
+                  return {
+                    ...task,
+                    ...updates,
+                    ...(shouldStampClassDate ? { date: todayStr } : {})
+                  }
+                })
                 setTasks(next)
                 persistKidState({ tasks: next })
               }}
@@ -1221,7 +1250,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <button onClick={() => setShowClassManager(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
               </div>
               <div style={{ display: 'grid', gap: '14px' }}>
-                {renderFixedClassRegistrationPanel({ showBulk: false })}
+                {renderFixedClassRegistrationPanel({ showBulk: true })}
                 {renderFixedClassListPanel()}
               </div>
             </div>
@@ -1435,7 +1464,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           <div className="modal-overlay" onClick={() => setShowAllowanceBook(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: isMobile ? '95%' : '520px', width: '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>용돈기입장</h2>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>{getFullName(activeKidId)} 용돈기입장</h2>
                 <button onClick={() => setShowAllowanceBook(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
               </div>
 
@@ -1564,10 +1593,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
                 {studyApps.map((app) => (
-                  <button key={app.id} onClick={() => window.open(app.url, '_blank')} style={{ aspectRatio: '1/1', background: '#f8fafc', borderRadius: '18px', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px' }}>
-                    <div style={{ width: '40px', height: '40px', background: PRIMARY_PINK, borderRadius: '12px', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 'bold' }}>{app.name[0]}</div>
-                    <div style={{ fontSize: '12px', marginTop: '8px', fontWeight: 'bold' }}>{app.name}</div>
-                  </button>
+                  <div key={app.id} style={{ position: 'relative' }}>
+                    <button onClick={() => { window.open(app.url, '_blank'); setShowAppLauncher(false); }} style={{ width: '100%', aspectRatio: '1/1', background: '#f8fafc', borderRadius: '18px', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', cursor: 'pointer' }}>
+                      <div style={{ width: '40px', height: '40px', background: PRIMARY_PINK, borderRadius: '12px', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 'bold' }}>{app.name ? app.name[0] : '?'}</div>
+                      <div style={{ fontSize: '12px', marginTop: '8px', fontWeight: 'bold', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{app.name}</div>
+                    </button>
+                    {isAdmin && (
+                      <button onClick={() => handleDeleteApp(app.id)} style={{ position: 'absolute', top: '-5px', right: '-5px', width: '22px', height: '22px', borderRadius: '50%', background: '#fff', border: '1px solid #ddd', color: '#ff4d6d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 2 }}>
+                        <CloseIcon size={14} />
+                      </button>
+                    )}
+                  </div>
                 ))}
                 {isAdmin && (
                   <button onClick={async () => { const name = prompt('앱 이름'); const url = prompt('URL (https:// 포함)'); if (name && url) { await mergeMetaDoc('apps', { apps: arrayUnion({ id: Date.now(), name, url }), updatedAt: serverTimestamp() }); } }} style={{ aspectRatio: '1/1', border: '2px dashed #ddd', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white' }}>
@@ -1592,12 +1628,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <input className="input-field" type="password" placeholder="새 비밀번호 확인" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} style={{ marginBottom: '8px' }} />
                 <button onClick={handleChangePassword} className="btn-primary" style={{ width: '100%' }}>비밀번호 변경</button>
               </div>
-              {isAdmin ? (
-                <div style={{ background: '#fff7fa', border: '1px solid #ffd6e0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '10px' }}>고정수업 등록</div>
-                  {renderFixedClassRegistrationPanel()}
-                </div>
-              ) : null}
+
               <button onClick={onLogout} className="btn-primary" style={{ width: '100%', background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
             </div>
           </div>

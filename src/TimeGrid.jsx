@@ -91,6 +91,13 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
 }
 
 function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
+  const getTaskCoins = (targetTask) => {
+    const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
+    const parsedCoins = Number(targetTask?.coins)
+    if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
+    return targetTask?.type === 'study' ? 1 : 0
+  }
+
   const [isEditing, setIsEditing] = useState(false)
   const [showMemo, setShowMemo] = useState(false)
   const [draftName, setDraftName] = useState(task.name || '')
@@ -98,7 +105,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const [draftDuration, setDraftDuration] = useState(Number(task.duration || 50))
   const [draftMemo, setDraftMemo] = useState(task.memo || task.note || '')
   const [draftColor, setDraftColor] = useState(task.color || PRIMARY_PINK)
-  const [draftCoins, setDraftCoins] = useState(Number(task.coins || (task.type === 'study' ? 1 : 0)))
+  const [draftCoins, setDraftCoins] = useState(getTaskCoins(task))
   const [draftStartDate, setDraftStartDate] = useState(task.startDate || task.classStartDate || '')
   const [draftEndDate, setDraftEndDate] = useState(task.endDate || task.classEndDate || '')
 
@@ -108,7 +115,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     setDraftDuration(Number(task.duration || 50))
     setDraftMemo(task.memo || task.note || '')
     setDraftColor(task.color || PRIMARY_PINK)
-    setDraftCoins(Number(task.coins || (task.type === 'study' ? 1 : 0)))
+    setDraftCoins(getTaskCoins(task))
     setDraftStartDate(task.startDate || task.classStartDate || '')
     setDraftEndDate(task.endDate || task.classEndDate || '')
   }, [task])
@@ -148,6 +155,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const actualDuration = persistedDuration ?? computeDuration(actualStart, actualEnd)
   const classStatus = normalizeClassStatus(task.status, task.completed)
   const isClassTask = task.type === 'class'
+  const taskCoins = getTaskCoins(task)
   const canManageTask = isAdmin || task.type !== 'class'
   const [tick, setTick] = useState(Date.now())
 
@@ -268,7 +276,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
               {task.name} {task.completed && <Sparkles size={14} color="#fbbf24" style={{ display: 'inline' }} />}
             </div>
             <div style={{ fontSize: '12px', color: '#666' }}>
-              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){isClassTask ? ` · ${taskCoins}코인` : ''}
             </div>
           </div>
         </div>
@@ -278,7 +286,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
               <button
                 onPointerDown={(event) => {
                   event.stopPropagation()
-                  onUpdateTask(task.id, { completed: false, status: '', coins: task.coins || 1 })
+                  onUpdateTask(task.id, { completed: false, status: '', coins: taskCoins })
                 }}
                 style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}
                 title="상태 초기화"
@@ -335,7 +343,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
               <button
-                onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }}
+                onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: taskCoins }) }}
                 title="완료"
                 aria-label="완료"
                 style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
