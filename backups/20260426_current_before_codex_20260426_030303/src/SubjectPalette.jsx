@@ -25,19 +25,19 @@ function PaletteItem({
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `palette-${subject.name}`,
-    data: { type: 'palette', subject: { ...subject, coins: subject.coins ?? 1 } },
+    data: { type: 'palette', subject: { ...subject, coins: subject.coins || 1 } },
     disabled: !allowDrag
   })
 
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(subject.name)
   const [draftColor, setDraftColor] = useState(subject.color)
-  const [draftCoins, setDraftCoins] = useState(subject.coins ?? 1)
+  const [draftCoins, setDraftCoins] = useState(subject.coins || 1)
 
   useEffect(() => {
     setDraftName(subject.name)
     setDraftColor(subject.color)
-    setDraftCoins(subject.coins ?? 1)
+    setDraftCoins(subject.coins || 1)
   }, [subject.name, subject.color, subject.coins])
 
   const style = {
@@ -82,7 +82,7 @@ function PaletteItem({
                 ...subject,
                 name: nextName,
                 color: canEditColor ? draftColor : subject.color,
-                coins: canEditCoins ? draftCoins : (subject.coins ?? 1)
+                coins: canEditCoins ? draftCoins : (subject.coins || 1)
               })
               setIsEditing(false)
             }}
@@ -102,7 +102,7 @@ function PaletteItem({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>{subject.name}</span>
-          <span style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold' }}>+{subject.coins ?? 1}코인</span>
+          <span style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold' }}>+{subject.coins || 1}코인</span>
         </div>
         <span style={{ display: 'flex', gap: '4px' }}>
           {canEditCoins ? (
@@ -347,7 +347,7 @@ export function SubjectPalette({
                   onClick={() => {
                     const name = (draft.name || '').trim()
                     if (!name) return
-                    updateKidSubjects(kidId, [...(subjectsByKid[kidId] || []), { name, color: draft.color || '#8b5cf6', coins: isAdmin ? (draft.coins ?? 1) : 1 }])
+                    updateKidSubjects(kidId, [...(subjectsByKid[kidId] || []), { name, color: draft.color || '#8b5cf6', coins: isAdmin ? (draft.coins || 1) : 1 }])
                     patchDraft(kidId, { name: '', coins: 1 })
                   }}
                 >

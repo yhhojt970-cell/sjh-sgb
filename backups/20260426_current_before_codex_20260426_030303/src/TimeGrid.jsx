@@ -18,6 +18,14 @@ const buildExpectedEndTime = (startTime, duration = 50) => {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
+const normalizeClassStatus = (status, completed) => {
+  const value = String(status || '').trim().toLowerCase()
+  if (value === 'completed' || value === '완료' || completed) return 'completed'
+  if (value === 'holiday' || value === '휴강') return 'holiday'
+  if (value === 'absent' || value === '결석') return 'absent'
+  return ''
+}
+
 function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
@@ -84,7 +92,6 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
 
 function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
   const getTaskCoins = (targetTask) => {
-    if (!targetTask || targetTask.type === 'class') return 0
     const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
     const parsedCoins = Number(targetTask?.coins)
     if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
@@ -116,15 +123,12 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { type: 'task', task },
-    disabled: isEditing || isMobile || (task.type === 'class' && !isAdmin)
+    disabled: isEditing || isMobile
   })
 
   const memo = task.memo || task.note || ''
-  const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
-  const isClassTask = task.type === 'class'
-  const currentStatus = isClassTask ? (todayLog?.status || '') : ''
-  const actualStart = todayLog?.startTimeActual || task.actualStartTime || task.startTimeActual || ''
-  const actualEnd = todayLog?.endTimeActual || task.actualEndTime || task.endTimeActual || ''
+  const actualStart = task.actualStartTime || task.startTimeActual || ''
+  const actualEnd = task.actualEndTime || task.endTimeActual || ''
   const parseClockToMinutes = (value) => {
     if (!value || typeof value !== 'string' || !value.includes(':')) return null
     const [h, m] = value.split(':').map((n) => parseInt(n, 10))
@@ -149,18 +153,22 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
     .map((value) => (value === '' || value === null || value === undefined ? null : Number(value)))
     .find((value) => value !== null && !Number.isNaN(value))
   const actualDuration = persistedDuration ?? computeDuration(actualStart, actualEnd)
+  const classStatus = normalizeClassStatus(task.status, task.completed)
+  const isClassTask = task.type === 'class'
   const taskCoins = getTaskCoins(task)
   const canManageTask = isAdmin || task.type !== 'class'
   const [tick, setTick] = useState(Date.now())
   
-  const isDone = todayLog?.status === 'completed' || (task.completed && task.date === todayStr)
+  const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
+  const currentStatus = todayLog?.status || ''
+  const isDone = currentStatus === 'completed' || (task.completed && task.date === todayStr)
   const editRequested = todayLog?.editRequested || false
 
   useEffect(() => {
-    if (task.type === 'class' || isDone || !actualStart) return
+    if (task.type === 'class' || task.completed || !actualStart) return
     const timer = setInterval(() => setTick(Date.now()), 10000)
     return () => clearInterval(timer)
-  }, [task.type, isDone, actualStart])
+  }, [task.type, task.completed, actualStart])
 
   const liveDuration = isDone ? (todayLog?.durationActual || actualDuration) : (actualStart ? computeDuration(actualStart, format(new Date(tick), 'HH:mm')) : null)
 
@@ -199,7 +207,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
       memo: draftMemo.trim(),
       note: draftMemo.trim(),
       color: draftColor || task.color || PRIMARY_PINK,
-      coins: isClassTask ? 0 : Math.max(0, Number(draftCoins || 0)),
+      coins: Math.max(0, Number(draftCoins || 0)),
       startDate: draftStartDate || null,
       endDate: draftEndDate || null,
       classStartDate: draftStartDate || null,
@@ -278,9 +286,9 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             </div>
           </div>
         </div>
-        {(canManageTask || (isClassTask && currentStatus && !isAdmin)) && (
+        {canManageTask && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-            {canManageTask && isAdmin && task.type === 'class' && (
+            {isAdmin && task.type === 'class' && (
               <button
                 onPointerDown={(event) => {
                   event.stopPropagation()
@@ -292,12 +300,10 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
                 <RotateCcw size={14} />
               </button>
             )}
-            {canManageTask && (
-              <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
-                <Edit3 size={14} />
-              </button>
-            )}
-            {isClassTask && currentStatus && !isAdmin && (
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
+              <Edit3 size={14} />
+            </button>
+            {currentStatus && !isAdmin && (
               <button 
                 onPointerDown={(event) => event.stopPropagation()} 
                 onClick={(event) => { 
@@ -312,11 +318,9 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
                 {editRequested ? '요청됨' : '수정요청'}
               </button>
             )}
-            {canManageTask && (
-              <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}>
-                <Trash2 size={16} />
-              </button>
-            )}
+            <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}>
+              <Trash2 size={16} />
+            </button>
           </div>
         )}
       </div>
@@ -330,11 +334,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
             <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer' }} />
-            {isClassTask ? (
-              <div style={{ flex: 1, height: '42px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 900, color: '#64748b' }}>고정수업 0코인</div>
-            ) : (
-              <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
-            )}
+            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>
