@@ -231,16 +231,61 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   useEffect(() => {
     if (!resolvedKidDocId || !isCloud) return
+    let cancelled = false
     const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId)
-    return onSnapshot(ref, (snap) => {
+
+    const restoreMissingEssentialsFromAliases = async () => {
+      if (!activeKidId) return
+      const info = allUsers[activeKidId] || {}
+      const aliases = [...new Set([activeKidId, info.name, info.displayName, info.loginId].filter(Boolean))]
+        .filter((alias) => alias !== resolvedKidDocId)
+      const restored = []
+      const seenNames = new Set()
+
+      for (const alias of aliases) {
+        const aliasSnap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', alias))
+        if (!aliasSnap.exists()) continue
+
+        const aliasEssentials = Array.isArray(aliasSnap.data()?.essentials) ? aliasSnap.data().essentials : []
+        aliasEssentials.forEach((item) => {
+          const name = String(item?.name || '').trim()
+          if (!name || seenNames.has(name)) return
+          seenNames.add(name)
+          restored.push({
+            id: item?.id || `essential-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            name
+          })
+        })
+      }
+
+      if (cancelled || restored.length === 0) return
+      setEssentials(restored)
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', resolvedKidDocId),
+        { essentials: restored, updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+    }
+
+    const unsubscribe = onSnapshot(ref, (snap) => {
       const data = snap.exists() ? snap.data() : {}
+      const nextEssentials = Array.isArray(data?.essentials) ? data.essentials : []
       setTasks(Array.isArray(data?.tasks) ? data.tasks : [])
       setRewards(Array.isArray(data?.rewards) ? data.rewards : [])
-      setEssentials(Array.isArray(data?.essentials) ? data.essentials : [])
+      setEssentials(nextEssentials)
       setSpentCoins(Number(data?.spentCoins || 0))
       setAllowanceEntries(Array.isArray(data?.allowanceEntries) ? data.allowanceEntries : [])
+
+      if (nextEssentials.length === 0) {
+        restoreMissingEssentialsFromAliases().catch(console.error)
+      }
     })
-  }, [resolvedKidDocId, isCloud, cloud?.db, cloud?.householdId])
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [resolvedKidDocId, activeKidId, allUsers, isCloud, cloud?.db, cloud?.householdId])
 
   useEffect(() => {
     if (!isCloud) return
