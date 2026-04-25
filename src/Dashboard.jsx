@@ -11,7 +11,6 @@ import {
   Gift,
   LayoutGrid,
   LogOut,
-  MessageSquare,
   PiggyBank,
   Plus,
   Send,
@@ -1111,10 +1110,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }, 150)
   }
 
-  const resolveEditRequest = async (logId) => {
-    const nextLogs = doneLogs.map((l) => l.id === logId ? { ...l, editRequested: false } : l)
-    setDoneLogs(nextLogs)
-    await persistKidState({ doneLogs: nextLogs })
+  const resolveEditRequest = (logId) => {
+    setDoneLogs(prev => prev.map((l) => l.id === logId ? { ...l, editRequested: false } : l))
   }
 
   const getStatusLabel = (status) => ({
@@ -1396,10 +1393,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         <header style={{ ...glassStyle, padding: isMobile ? '12px 15px' : '15px 25px', borderRadius: '20px', marginBottom: '15px', boxShadow: '0 4px 12px rgba(255,77,109,0.05)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? '8px' : '20px', flexDirection: isMobile ? 'column' : 'row' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '10px' : '15px' }}>
-              <div onClick={() => (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) && (isAdmin ? setShowDailyLog(true) : setShowSurprise(true))} style={{ position: 'relative', cursor: (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) ? 'pointer' : 'default' }}>
-                <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: (unreadMessage || (isAdmin && doneLogs.some(l => l.editRequested))) ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none' }}>
-                  {(isAdmin && doneLogs.some(l => l.editRequested)) ? <MessageSquare size={isMobile ? 22 : 24} color="white" /> : unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" />}
-                  {(isAdmin && doneLogs.some(l => l.editRequested)) && (
+              <div onClick={() => unreadMessage && setShowSurprise(true)} style={{ position: 'relative', cursor: unreadMessage ? 'pointer' : 'default' }}>
+                <div style={{ width: isMobile ? '42px' : '48px', height: isMobile ? '42px' : '48px', background: unreadMessage ? PRIMARY_PINK : '#f1f5f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: hasReadToday ? '2px solid #42c99b' : 'none' }}>
+                  {unreadMessage ? <Gift size={isMobile ? 22 : 24} color="white" /> : hasReadToday ? <Check size={isMobile ? 22 : 24} color="#42c99b" /> : <Gift size={isMobile ? 22 : 24} color="#ccc" />}
+                  {unreadMessage && (
                     <span style={{ position: 'absolute', top: '-5px', right: '-5px', background: '#fbbf24', color: 'white', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid white' }}>
                       !
                     </span>
@@ -1464,12 +1461,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
               )}
               {isAdmin && (
-                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" title="오늘의 기록 관리">
-                  <Check size={isMobile ? 18 : 22} />
-                  {doneLogs.some(l => l.editRequested) && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
-                </button>
-              )}
-              {isAdmin && (
                 <button onClick={() => setShowFamilyManager(true)} className="header-btn-original" style={{ position: 'relative' }}>
                   <Users size={isMobile ? 18 : 22} />
                   {unreadRepliesForAdmin > 0 ? (
@@ -1480,7 +1471,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
               )}
               {isAdmin && (
-                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" title="오늘의 기록 관리">
+                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" style={{ position: 'relative' }} title="오늘의 기록 관리">
                   <Calendar size={isMobile ? 18 : 22} />
                   {doneLogs.some(l => l.editRequested) && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
                 </button>
