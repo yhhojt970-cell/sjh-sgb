@@ -322,6 +322,27 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [isCloud, cloud?.db, cloud?.householdId])
 
+  useEffect(() => {
+    if (tasks.length > 0) {
+      const legacyToMigrate = tasks.filter(t => t.completed && t.date && !doneLogs.some(l => String(l.taskId) === String(t.id) && l.date === t.date));
+      if (legacyToMigrate.length > 0) {
+        const newLogs = legacyToMigrate.map(t => ({
+          id: `${t.id}-${t.date}`,
+          taskId: t.id,
+          name: t.name,
+          type: t.type,
+          date: t.date,
+          status: 'completed',
+          coins: getTaskCoins(t),
+          timestamp: Date.now()
+        }));
+        const nextLogs = [...doneLogs, ...newLogs];
+        setDoneLogs(nextLogs);
+        persistKidState({ doneLogs: nextLogs });
+      }
+    }
+  }, [tasks, doneLogs]);
+
   const handleDeleteApp = async (appId) => {
     if (!window.confirm('이 앱을 삭제할까요?')) return
     const next = studyApps.filter((a) => a.id !== appId)
@@ -958,29 +979,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         <div style={{ background: '#fff9fb', border: '1px solid #ffe1ea', borderRadius: '18px', padding: '12px' }}>
           <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px', color: PRIMARY_PINK }}>한 건 입력</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
-            <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })} style={{ fontSize: '12px', height: '36px' }}>
+            <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }}>
               <option value="" disabled>아이 선택</option>
               {kidsList.map((kidId) => (
                 <option key={kidId} value={kidId}>{getFullName(kidId)}</option>
               ))}
             </select>
-            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })} style={{ fontSize: '12px', height: '36px' }}>
+            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }}>
               {weekdayLabels.map((label, index) => (
                 <option key={label} value={String(index)}>{label}요일</option>
               ))}
             </select>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: '6px', marginBottom: '6px' }}>
-            <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
-            <input className="input-field" type="time" value={manualClass.startTime} onChange={(event) => patchManualClass({ startTime: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
+            <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
+            <input className="input-field" type="time" value={manualClass.startTime} onChange={(event) => patchManualClass({ startTime: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
-            <input className="input-field" type="number" min="1" placeholder="시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
-            <input className="input-field" type="number" min="0" placeholder="코인" value={manualClass.coins} onChange={(event) => patchManualClass({ coins: event.target.value })} style={{ fontSize: '12px', height: '36px' }} />
+            <input className="input-field" type="number" min="1" placeholder="시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
+            <input className="input-field" type="number" min="0" placeholder="코인" value={manualClass.coins} onChange={(event) => patchManualClass({ coins: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
-            <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} style={{ fontSize: '12px', height: '36px' }} title="시작일" />
-            <input className="input-field" type="date" value={manualClass.endDate} onChange={(event) => patchManualClass({ endDate: event.target.value })} style={{ fontSize: '12px', height: '36px' }} title="종료일" />
+            <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} title="시작일" />
+            <input className="input-field" type="date" value={manualClass.endDate} onChange={(event) => patchManualClass({ endDate: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} title="종료일" />
           </div>
           <textarea className="input-field" placeholder="메모 (선택)" value={manualClass.memo} onChange={(event) => patchManualClass({ memo: event.target.value })} style={{ minHeight: '40px', fontSize: '12px', marginBottom: '6px', padding: '8px' }} />
           <button className="btn-primary" style={{ width: '100%', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', opacity: selectedManualKidId ? 1 : 0.55, cursor: selectedManualKidId ? 'pointer' : 'not-allowed', fontSize: '13px' }} onClick={handleManualClassAdd} disabled={!selectedManualKidId}>
