@@ -6,6 +6,11 @@ import { CalendarX, Check, Clock, Edit3, Heart, MessageSquare, Play, RotateCcw, 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const BASE_HOURS = Array.from({ length: 18 }, (_, index) => index + 7)
+const MOBILE_EMPTY_SLOT_HEIGHT = 50
+const MOBILE_TASK_CARD_HEIGHT = 112
+const MOBILE_SLOT_PADDING_Y = 20
+const DESKTOP_EMPTY_SLOT_HEIGHT = 55
+const DESKTOP_TASK_SLOT_HEIGHT = 110
 
 const buildExpectedEndTime = (startTime, duration = 50) => {
   const [hour, minute] = String(startTime || '00:00').split(':').map(Number)
@@ -28,6 +33,11 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
     () => tasks.filter((task) => parseInt(String(task.startTime || '00:00').split(':')[0], 10) === hour),
     [tasks, hour]
   )
+  const slotMinHeight = useMemo(() => {
+    if (hourTasks.length === 0) return isMobile ? MOBILE_EMPTY_SLOT_HEIGHT : DESKTOP_EMPTY_SLOT_HEIGHT
+    if (!isMobile) return DESKTOP_TASK_SLOT_HEIGHT
+    return MOBILE_SLOT_PADDING_Y + (hourTasks.length * MOBILE_TASK_CARD_HEIGHT) + (Math.max(0, hourTasks.length - 1) * 10)
+  }, [hourTasks.length, isMobile])
 
   useEffect(() => {
     if (!isMobile || !activeSlot) return
@@ -43,7 +53,7 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
       onMouseLeave={() => !isMobile && setActiveSlot(false)}
       style={{
         display: 'flex',
-        minHeight: hourTasks.length > 0 ? (isMobile ? '92px' : '110px') : (isMobile ? '50px' : '55px'),
+        minHeight: `${slotMinHeight}px`,
         borderBottom: '1px solid rgba(0,0,0,0.05)',
         background: isOver ? 'rgba(255,77,109,0.05)' : 'transparent',
         transition: 'all 0.2s ease',
@@ -69,9 +79,9 @@ function TimeSlot({ hour, tasks, onUpdateTask, onDeleteTask, isAdmin, isMobile, 
         </button>
       )}
 
-      <div style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
-          <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? '100%' : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)' }}>
+          <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? 0 : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)', boxSizing: 'border-box' }}>
             <TaskCard task={task} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
           </div>
         ))}
@@ -199,11 +209,13 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
     background: task.completed ? '#f8fafc' : (isClassTask ? 'linear-gradient(135deg, #f7f9ff 0%, #f3f7ff 100%)' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)'),
     borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
-    padding: isMobile ? '10px' : '15px',
+    padding: isMobile ? '8px 10px' : '15px',
     boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
     border: task.completed ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${(task.color || PRIMARY_PINK)}20`),
-    height: '100%'
+    height: isMobile ? 'auto' : '100%',
+    boxSizing: 'border-box',
+    maxWidth: '100%'
   }
 
   if (task.type === 'event') {
@@ -225,7 +237,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
 
   return (
     <div ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', gap: '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: isMobile ? '6px' : '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
             {isClassTask ? (
@@ -261,7 +273,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
           </div>
         </div>
         {canManageTask && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
             {isAdmin && task.type === 'class' && (
               <button
                 onPointerDown={(event) => {
@@ -318,7 +330,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
         </div>
       ) : null}
 
-      <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+      <div style={{ display: 'flex', gap: '6px', marginTop: isMobile ? '6px' : '10px' }}>
         {task.type === 'class' ? (
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
@@ -326,7 +338,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
                 onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: true, status: 'completed', coins: 1 }) }}
                 title="완료"
                 aria-label="완료"
-                style={{ width: isMobile ? '36px' : '40px', height: isMobile ? '36px' : '40px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'completed' ? '#42c99b' : '#f1f5f9', color: classStatus === 'completed' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Check size={18} />
               </button>
@@ -334,7 +346,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
                 onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'holiday' }) }}
                 title="휴강"
                 aria-label="휴강"
-                style={{ width: isMobile ? '36px' : '40px', height: isMobile ? '36px' : '40px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'holiday' ? '#3b82f6' : '#f1f5f9', color: classStatus === 'holiday' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <CalendarX size={18} />
               </button>
@@ -342,7 +354,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
                 onPointerDown={(event) => { event.stopPropagation(); onUpdateTask(task.id, { completed: false, status: 'absent' }) }}
                 title="결석"
                 aria-label="결석"
-                style={{ width: isMobile ? '36px' : '40px', height: isMobile ? '36px' : '40px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: isMobile ? '32px' : '40px', height: isMobile ? '32px' : '40px', borderRadius: '10px', background: classStatus === 'absent' ? '#ef4444' : '#f1f5f9', color: classStatus === 'absent' ? 'white' : '#666', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <UserX size={18} />
               </button>

@@ -36,6 +36,18 @@ const buildExpectedEndTime = (startTime, duration = DEFAULT_DURATION) => {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
+const normalizeStartTime = (raw) => {
+  const value = String(raw || '').trim()
+  const match = value.match(/^(\d{1,2})(?::(\d{1,2}))?$/)
+  if (!match) return ''
+
+  const hour = parseInt(match[1], 10)
+  const minute = parseInt(match[2] || '0', 10)
+  if (Number.isNaN(hour) || Number.isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) return ''
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
 const parseWeekday = (raw) => {
   const value = String(raw || '').trim().toLowerCase()
   const map = {
@@ -48,6 +60,39 @@ const parseWeekday = (raw) => {
     sat: 6, saturday: 6, '토': 6, '토요일': 6, '6': 6
   }
   return map[value]
+}
+
+const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '' }) => {
+  const parsedWeekday = Number(typeof weekday === 'number' ? weekday : parseWeekday(weekday))
+  const parsedDuration = parseInt(duration, 10)
+  const normalizedStartTime = normalizeStartTime(startTime)
+  const trimmedName = String(name || '').trim()
+  const trimmedMemo = String(memo || '').trim()
+  const trimmedStartDate = String(startDate || '').trim()
+  const trimmedEndDate = String(endDate || '').trim()
+
+  if (!trimmedName || !Number.isInteger(parsedWeekday) || parsedWeekday < 0 || parsedWeekday > 6 || !normalizedStartTime || Number.isNaN(parsedDuration) || parsedDuration <= 0) {
+    return null
+  }
+
+  return {
+    id: `class-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: trimmedName,
+    color: '#7c9cff',
+    startTime: normalizedStartTime,
+    expectedEndTime: buildExpectedEndTime(normalizedStartTime, parsedDuration),
+    duration: parsedDuration,
+    type: 'class',
+    icon: 'Book',
+    completed: false,
+    weekday: parsedWeekday,
+    memo: trimmedMemo,
+    note: trimmedMemo,
+    startDate: trimmedStartDate || null,
+    endDate: trimmedEndDate || null,
+    classStartDate: trimmedStartDate || null,
+    classEndDate: trimmedEndDate || null
+  }
 }
 
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
@@ -98,6 +143,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     memo: ''
   })
   const [bulkInput, setBulkInput] = useState('')
+  const [manualClass, setManualClass] = useState({
+    kidId: '',
+    weekday: String(getDay(selectedDate)),
+    name: '',
+    startTime: '16:00',
+    duration: DEFAULT_DURATION,
+    startDate: '',
+    endDate: '',
+    memo: ''
+  })
+  const [classAddStatus, setClassAddStatus] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
   const [coinLedgerByKid, setCoinLedgerByKid] = useState({})
   const [allTasksByKid, setAllTasksByKid] = useState({})
@@ -421,37 +477,35 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }
 
   const updateFixedClassTask = async (kidId, taskId, patch) => {
-    const currentTasks = allTasksByKid[kidId] || []
+    const currentTasks = allTasksByKid[kidId] || (kidId === activeKidId ? tasks : [])
     const nextTasks = currentTasks.map((task) => (String(task.id) === String(taskId) ? { ...task, ...patch } : task))
     setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+    let targetDocId = kidId
     if (isCloud) {
+      targetDocId = await getKidDocIdForWrite(kidId)
       await setDoc(
-        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
+        doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
         { tasks: nextTasks, updatedAt: serverTimestamp() },
         { merge: true }
       )
     }
-    if (kidId === activeKidId) {
-      setTasks(nextTasks)
-      await persistKidState({ tasks: nextTasks })
-    }
+    if (kidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
   }
 
   const deleteFixedClassTask = async (kidId, taskId) => {
-    const currentTasks = allTasksByKid[kidId] || []
+    const currentTasks = allTasksByKid[kidId] || (kidId === activeKidId ? tasks : [])
     const nextTasks = currentTasks.filter((task) => String(task.id) !== String(taskId))
     setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+    let targetDocId = kidId
     if (isCloud) {
+      targetDocId = await getKidDocIdForWrite(kidId)
       await setDoc(
-        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
+        doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
         { tasks: nextTasks, updatedAt: serverTimestamp() },
         { merge: true }
       )
     }
-    if (kidId === activeKidId) {
-      setTasks(nextTasks)
-      await persistKidState({ tasks: nextTasks })
-    }
+    if (kidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
   }
 
   const handleSendReply = async () => {
@@ -520,6 +574,34 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       if (snap.exists()) return alias
     }
     return aliases[0] || kidId
+  }
+
+  const appendFixedClassesForKid = async (kidId, classItems) => {
+    const targetKidId = kidId || activeKidId || kidsList[0]
+    if (!targetKidId || classItems.length === 0) return
+
+    if (!isCloud) {
+      const currentTasks = targetKidId === activeKidId ? tasks : (allTasksByKid[targetKidId] || [])
+      const nextTasks = [...currentTasks, ...classItems]
+      setAllTasksByKid((prev) => ({ ...prev, [targetKidId]: nextTasks }))
+      if (targetKidId === activeKidId) setTasks(nextTasks)
+      return
+    }
+
+    const targetDocId = await getKidDocIdForWrite(targetKidId)
+    const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+    const kidData = snap.exists() ? snap.data() : {}
+    const currentTasks = Array.isArray(kidData?.tasks) ? kidData.tasks : (allTasksByKid[targetKidId] || [])
+    const nextTasks = [...currentTasks, ...classItems]
+
+    await setDoc(
+      doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+      { tasks: nextTasks, updatedAt: serverTimestamp() },
+      { merge: true }
+    )
+
+    setAllTasksByKid((prev) => ({ ...prev, [targetKidId]: nextTasks }))
+    if (targetKidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
   }
 
   const addReward = async () => {
@@ -598,9 +680,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [isAdmin, showFamilyManager, unreadRepliesForAdmin, isCloud, messages])
 
   useEffect(() => {
-    if (!isAdmin || !showPalette) return
+    if (!isAdmin || !showClassManager) return
     loadAllKidTasksForAdmin().catch(console.error)
-  }, [isAdmin, showPalette, kidsList.join('|')])
+  }, [isAdmin, showClassManager, kidsList.join('|')])
 
   useEffect(() => {
     if (!showAllowanceBook) setShowAllAllowanceEntries(false)
@@ -648,29 +730,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         return name.includes(kidRaw) || kidRaw.includes(name)
       }) || activeKidId
 
-      const weekday = parseWeekday(dayRaw)
-      const duration = parseInt(durationRaw, 10)
-      const startTime = /^\d{1,2}:\d{2}$/.test(timeRaw) ? timeRaw : `${String(parseInt(timeRaw, 10) || 0).padStart(2, '0')}:00`
-      if (Number.isNaN(weekday) || Number.isNaN(duration) || !subjectRaw) return
+      const task = createFixedClassTask({
+        name: subjectRaw,
+        weekday: dayRaw,
+        startTime: timeRaw,
+        duration: durationRaw,
+        startDate: startDateRaw,
+        endDate: endDateRaw,
+        memo: memoRaw
+      })
+      if (!task) return
 
-      const task = {
-        id: `class-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: subjectRaw.trim(),
-        color: '#7c9cff',
-        startTime,
-        expectedEndTime: buildExpectedEndTime(startTime, duration),
-        duration,
-        type: 'class',
-        icon: 'Book',
-        completed: false,
-        weekday,
-        memo: String(memoRaw || '').trim(),
-        note: String(memoRaw || '').trim(),
-        startDate: String(startDateRaw || '').trim() || null,
-        endDate: String(endDateRaw || '').trim() || null,
-        classStartDate: String(startDateRaw || '').trim() || null,
-        classEndDate: String(endDateRaw || '').trim() || null
-      }
       if (!byKid.has(kidId)) byKid.set(kidId, [])
       byKid.get(kidId).push(task)
     })
@@ -681,15 +751,32 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
 
     for (const [kidId, items] of byKid.entries()) {
-      await setDoc(
-        doc(cloud.db, 'households', cloud.householdId, 'kids', kidId),
-        { tasks: arrayUnion(...items), updatedAt: serverTimestamp() },
-        { merge: true }
-      )
+      await appendFixedClassesForKid(kidId, items)
     }
 
     setBulkInput('')
+    setClassAddStatus('고정수업을 등록했어요.')
     setShowClassManager(false)
+  }
+
+  const handleManualClassAdd = async () => {
+    const targetKidId = manualClass.kidId || activeKidId || kidsList[0]
+    const task = createFixedClassTask(manualClass)
+    if (!targetKidId || !task) {
+      alert('아이, 요일, 과목명, 시작시간, 수업시간을 확인해 주세요.')
+      return
+    }
+
+    await appendFixedClassesForKid(targetKidId, [task])
+    setManualClass((prev) => ({
+      ...prev,
+      kidId: targetKidId,
+      name: '',
+      memo: '',
+      startDate: '',
+      endDate: ''
+    }))
+    setClassAddStatus(`${getFullName(targetKidId)} 고정수업을 등록했어요.`)
   }
 
   const fixedClassesByKid = useMemo(() => {
@@ -718,6 +805,151 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     WebkitBackdropFilter: 'blur(15px)',
     border: '1px solid rgba(255,255,255,0.3)'
   }
+
+  const patchManualClass = (patch) => {
+    setManualClass((prev) => ({ ...prev, ...patch }))
+    if (classAddStatus) setClassAddStatus('')
+  }
+
+  const openSubjectManager = () => {
+    setShowClassManager(false)
+    setShowPalette((prev) => !prev)
+  }
+
+  const openFixedClassManager = () => {
+    setShowPalette(false)
+    setShowClassManager(true)
+  }
+
+  const renderFixedClassRegistrationPanel = ({ showBulk = true } = {}) => {
+    const selectedManualKidId = manualClass.kidId || activeKidId || kidsList[0] || ''
+
+    return (
+      <div style={{ display: 'grid', gap: '14px' }}>
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>한 건 입력</div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+            <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })}>
+              <option value="" disabled>아이 선택</option>
+              {kidsList.map((kidId) => (
+                <option key={kidId} value={kidId}>{getFullName(kidId)}</option>
+              ))}
+            </select>
+            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })}>
+              {weekdayLabels.map((label, index) => (
+                <option key={label} value={String(index)}>{label}요일</option>
+              ))}
+            </select>
+            <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} />
+            <input className="input-field" type="time" value={manualClass.startTime} onChange={(event) => patchManualClass({ startTime: event.target.value })} />
+            <input className="input-field" type="number" min="1" placeholder="수업 시간(분)" value={manualClass.duration} onChange={(event) => patchManualClass({ duration: event.target.value })} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
+              시작일
+              <input className="input-field" type="date" value={manualClass.startDate} onChange={(event) => patchManualClass({ startDate: event.target.value })} />
+            </label>
+            <label style={{ display: 'grid', gap: '4px', fontSize: '11px', fontWeight: 800, color: '#64748b' }}>
+              종료일
+              <input className="input-field" type="date" value={manualClass.endDate} onChange={(event) => patchManualClass({ endDate: event.target.value })} />
+            </label>
+          </div>
+          <textarea className="input-field" placeholder="메모 (선택)" value={manualClass.memo} onChange={(event) => patchManualClass({ memo: event.target.value })} style={{ minHeight: '68px', marginBottom: '8px' }} />
+          <button className="btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', opacity: selectedManualKidId ? 1 : 0.55, cursor: selectedManualKidId ? 'pointer' : 'not-allowed' }} onClick={handleManualClassAdd} disabled={!selectedManualKidId}>
+            <Plus size={16} /> 한 건 등록
+          </button>
+          {classAddStatus ? <div style={{ marginTop: '8px', fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>{classAddStatus}</div> : null}
+        </div>
+
+        {showBulk ? (
+        <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '14px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>엑셀 붙여넣기 등록</div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</div>
+          <textarea className="input-field" value={bulkInput} onChange={(event) => { setBulkInput(event.target.value); if (classAddStatus) setClassAddStatus('') }} style={{ minHeight: '120px', marginBottom: '8px' }} />
+          <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+        </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  const renderFixedClassListPanel = () => (
+    <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '14px' }}>
+      <button
+        onClick={() => setFixedSectionOpen((prev) => !prev)}
+        style={{ width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '12px', padding: '10px 12px', fontWeight: 900, cursor: 'pointer', textAlign: 'left' }}
+      >
+        {fixedSectionOpen ? '▼' : '▶'} 아이별 고정수업 목록
+      </button>
+      {fixedSectionOpen ? (
+        <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
+          {kidsList.map((kidId) => {
+            const isOpen = fixedOpenByKid[kidId] !== false
+            const classItems = fixedClassesByKid[kidId] || []
+            return (
+              <div key={`fixed-${kidId}`} style={{ border: '1px solid #ffe1ea', borderRadius: '12px', padding: '8px' }}>
+                <button
+                  onClick={() => setFixedOpenByKid((prev) => ({ ...prev, [kidId]: !isOpen }))}
+                  style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 900, color: '#ff4d6d', cursor: 'pointer', padding: '4px 2px' }}
+                >
+                  {isOpen ? '▼' : '▶'} {getFullName(kidId)} ({classItems.length})
+                </button>
+                {isOpen ? (
+                  <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
+                    {classItems.map((task) => (
+                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                          {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+                        </div>
+                        <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={async () => {
+                              const nextName = prompt('수업 이름', task.name || '')
+                              if (!nextName) return
+                              const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
+                              const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
+                              if (weekdayRaw === null) return
+                              const nextStart = prompt('시작 시간 (HH:mm)', task.startTime || '07:00')
+                              if (!nextStart) return
+                              const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
+                              if (Number.isNaN(nextDuration) || nextDuration <= 0) return
+                              const parsedWeekday = parseInt(weekdayRaw, 10)
+                              const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
+                              await updateFixedClassTask(kidId, task.id, {
+                                name: nextName.trim(),
+                                weekday: nextWeekday,
+                                startTime: nextStart,
+                                duration: nextDuration,
+                                expectedEndTime: buildExpectedEndTime(nextStart, nextDuration)
+                              })
+                            }}
+                            style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                          >
+                            수정
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('이 고정수업을 삭제할까요?')) return
+                              await deleteFixedClassTask(kidId, task.id)
+                            }}
+                            style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
 
   return (
     <DndContext
@@ -818,7 +1050,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             </div>
 
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '2px' : 0 }}>
-              {isAdmin && <button onClick={() => setShowPalette((prev) => !prev)} className="header-btn-original"><Plus size={isMobile ? 18 : 22} /></button>}
+              {isAdmin && <button onClick={openSubjectManager} className="header-btn-original" title="과목 총 관리" aria-label="과목 총 관리"><Plus size={isMobile ? 18 : 22} /></button>}
               {isAdmin && (
                 <button onClick={() => setShowFamilyManager(true)} className="header-btn-original" style={{ position: 'relative' }}>
                   <Users size={isMobile ? 18 : 22} />
@@ -891,7 +1123,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           )}
           {isAdmin && (
             <div style={{ position: 'fixed', bottom: isMobile ? '25px' : '40px', right: isMobile ? '25px' : '40px', zIndex: 950 }}>
-              <button onClick={() => setShowPalette((prev) => !prev)} style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255,77,109,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={openFixedClassManager} title="고정수업 관리" aria-label="고정수업 관리" style={{ width: isMobile ? '60px' : '65px', height: isMobile ? '60px' : '65px', borderRadius: '50%', background: PRIMARY_PINK, color: 'white', border: 'none', boxShadow: '0 6px 20px rgba(255,77,109,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Plus size={isMobile ? 35 : 40} />
               </button>
             </div>
@@ -938,14 +1170,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         {showClassManager && isAdmin && (
           <div className="modal-overlay" onClick={() => setShowClassManager(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '25px', maxWidth: '560px', width: '95%' }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '25px', maxWidth: '560px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</h2>
+                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>고정수업 관리</h2>
                 <button onClick={() => setShowClassManager(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
               </div>
-              <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>형식: 이름[TAB]요일[TAB]과목명[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</p>
-              <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '140px', marginBottom: '10px' }} />
-              <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {renderFixedClassRegistrationPanel({ showBulk: false })}
+                {renderFixedClassListPanel()}
+              </div>
             </div>
           </div>
         )}
@@ -968,83 +1201,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 18px 0' }}>
-              <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 팔레트</h2>
+              <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>과목 총 관리</h2>
               <button onClick={() => setShowPalette(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon size={24} /></button>
-            </div>
-            <div style={{ padding: '10px 18px 0' }}>
-              <button
-                onClick={() => setFixedSectionOpen((prev) => !prev)}
-                style={{ width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '12px', padding: '10px 12px', fontWeight: 900, cursor: 'pointer', textAlign: 'left' }}
-              >
-                {fixedSectionOpen ? '▼' : '▶'} 고정수업
-              </button>
-              {fixedSectionOpen ? (
-                <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
-                  {kidsList.map((kidId) => {
-                    const isOpen = fixedOpenByKid[kidId] !== false
-                    const classItems = fixedClassesByKid[kidId] || []
-                    return (
-                      <div key={`fixed-${kidId}`} style={{ border: '1px solid #ffe1ea', borderRadius: '12px', padding: '8px' }}>
-                        <button
-                          onClick={() => setFixedOpenByKid((prev) => ({ ...prev, [kidId]: !isOpen }))}
-                          style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 900, color: '#ff4d6d', cursor: 'pointer', padding: '4px 2px' }}
-                        >
-                          {isOpen ? '▼' : '▶'} {getFullName(kidId)} ({classItems.length})
-                        </button>
-                        {isOpen ? (
-                          <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
-                            {classItems.map((task) => (
-                              <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
-                                <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
-                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                                  {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
-                                </div>
-                                <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
-                                  <button
-                                    onClick={async () => {
-                                      const nextName = prompt('수업 이름', task.name || '')
-                                      if (!nextName) return
-                                      const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
-                                      const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
-                                      if (weekdayRaw === null) return
-                                      const nextStart = prompt('시작 시간 (HH:mm)', task.startTime || '07:00')
-                                      if (!nextStart) return
-                                      const nextDuration = parseInt(prompt('수업 시간(분)', String(task.duration || 50)) || '0', 10)
-                                      if (Number.isNaN(nextDuration) || nextDuration <= 0) return
-                                      const parsedWeekday = parseInt(weekdayRaw, 10)
-                                      const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
-                                      await updateFixedClassTask(kidId, task.id, {
-                                        name: nextName.trim(),
-                                        weekday: nextWeekday,
-                                        startTime: nextStart,
-                                        duration: nextDuration,
-                                        expectedEndTime: buildExpectedEndTime(nextStart, nextDuration)
-                                      })
-                                    }}
-                                    style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                                  >
-                                    수정
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      if (!window.confirm('이 고정수업을 삭제할까요?')) return
-                                      await deleteFixedClassTask(kidId, task.id)
-                                    }}
-                                    style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                                  >
-                                    삭제
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                            {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : null}
             </div>
             <SubjectPalette
               cloud={cloud}
@@ -1391,10 +1549,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               </div>
               {isAdmin ? (
                 <div style={{ background: '#fff7fa', border: '1px solid #ffd6e0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>엑셀 붙여넣기 등록 (고정수업)</div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>형식: 이름[TAB]요일[TAB]과목[TAB]시작시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)</div>
-                  <textarea className="input-field" value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} style={{ minHeight: '120px', marginBottom: '8px' }} />
-                  <button className="btn-primary" style={{ width: '100%' }} onClick={handleBulkAdd}>일괄 등록</button>
+                  <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '10px' }}>고정수업 등록</div>
+                  {renderFixedClassRegistrationPanel()}
                 </div>
               ) : null}
               <button onClick={onLogout} className="btn-primary" style={{ width: '100%', background: '#f1f5f9', color: '#ff4d6d' }}>로그아웃</button>
