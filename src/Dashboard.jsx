@@ -185,6 +185,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [allTasksByKid, setAllTasksByKid] = useState({})
   const [fixedSectionOpen, setFixedSectionOpen] = useState(true)
   const [fixedOpenByKid, setFixedOpenByKid] = useState({})
+  const [editingClassInfo, setEditingClassInfo] = useState(null)
 
   const kidsList = useMemo(
     () => Object.entries(allUsers).filter(([, info]) => info?.role === 'child').map(([id]) => id),
@@ -224,6 +225,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   useEffect(() => {
     if (!activeKidId) return
+    setDataLoaded(false)
     const info = allUsers[activeKidId] || {}
     const aliases = [activeKidId, info.name, info.displayName, info.loginId].filter(Boolean)
     const unique = [...new Set(aliases)]
@@ -240,27 +242,21 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', id))
         if (snap.exists()) {
           const data = snap.data() || {}
-          const hasData = (Array.isArray(data.tasks) && data.tasks.length > 0) || 
+          const hasData = (Array.isArray(data.tasks) && data.tasks.length > 0) ||
                           (Array.isArray(data.allowanceEntries) && data.allowanceEntries.length > 0) ||
                           (Array.isArray(data.doneLogs) && data.doneLogs.length > 0) ||
                           (Array.isArray(data.rewards) && data.rewards.length > 0) ||
                           (Array.isArray(data.essentials) && data.essentials.length > 0) ||
                           Number(data.spentCoins || 0) > 0
-          
+
           if (hasData) {
-            if (!cancelled) {
-              setResolvedKidDocId(id)
-              setDataLoaded(true)
-            }
+            if (!cancelled) setResolvedKidDocId(id)
             return
           }
           if (!firstExisting) firstExisting = id
         }
       }
-      if (!cancelled) {
-        setResolvedKidDocId(firstExisting || unique[0] || activeKidId)
-        setDataLoaded(true)
-      }
+      if (!cancelled) setResolvedKidDocId(firstExisting || unique[0] || activeKidId)
     }
 
     resolve().catch(console.error)
@@ -316,6 +312,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setSpentCoins(Number(data?.spentCoins || 0))
       setAllowanceEntries(Array.isArray(data?.allowanceEntries) ? data.allowanceEntries : [])
       setDoneLogs(Array.isArray(data?.doneLogs) ? data.doneLogs : [])
+      setDataLoaded(true)
 
       if (nextEssentials.length === 0) {
         restoreMissingEssentialsFromAliases().catch(console.error)
@@ -1114,6 +1111,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }, 150)
   }
 
+  const resolveEditRequest = async (logId) => {
+    const nextLogs = doneLogs.map((l) => l.id === logId ? { ...l, editRequested: false } : l)
+    setDoneLogs(nextLogs)
+    await persistKidState({ doneLogs: nextLogs })
+  }
+
   const getStatusLabel = (status) => ({
     completed: '완료',
     holiday: '휴강',
@@ -1311,13 +1314,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         </div>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button
-                            onClick={async () => {
-                              const patch = promptFixedClassPatch(task)
-                              if (!patch) return
-                              const scope = askFixedClassScope()
-                              if (!scope) return
-                              await updateFixedClassTask(kidId, task.id, patch, scope)
-                            }}
+                            onClick={() => setEditingClassInfo({
+                              kidId,
+                              task,
+                              name: task.name || '',
+                              weekday: String(task.weekday ?? '1'),
+                              startTime: task.startTime || '09:00',
+                              duration: String(task.duration || 50),
+                              coins: String(getTaskCoins(task)),
+                              startDate: task.startDate || task.classStartDate || '',
+                              endDate: task.endDate || task.classEndDate || '',
+                              memo: task.memo || task.note || ''
+                            })}
                             style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                           >
                             수정
@@ -1635,9 +1643,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 persistKidState({ tasks: next })
               }}
               onDeleteTask={(id) => {
-                const next = tasks.filter((task) => task.id !== id)
+                const deletedTask = tasks.find((t) => String(t.id) === String(id))
+                const next = tasks.filter((t) => String(t.id) !== String(id))
                 setTasks(next)
-                persistKidState({ tasks: next })
+                if (deletedTask && deletedTask.type !== 'class') {
+                  const nextLogs = doneLogs.filter((log) => !(String(log.taskId) === String(id) && log.date === todayStr))
+                  setDoneLogs(nextLogs)
+                  persistKidState({ tasks: next, doneLogs: nextLogs })
+                } else {
+                  persistKidState({ tasks: next })
+                }
               }}
               onAddSpecialEvent={(hour) => {
                 const name = prompt('특별 일정 이름')
@@ -1673,7 +1688,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 {pendingEditRequests.map((log) => (
                   <button
                     key={`request-${log.id}`}
-                    onClick={() => focusTaskFromLog(log)}
+                    onClick={() => { resolveEditRequest(log.id); setDismissedEditRequestKey(editRequestKey); focusTaskFromLog(log) }}
                     style={{ border: '1px solid #ffd6e0', background: '#fff7fa', borderRadius: '12px', padding: '10px 12px', textAlign: 'left', cursor: 'pointer' }}
                   >
                     <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name}</div>
@@ -1773,6 +1788,97 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div style={{ display: 'grid', gap: '14px' }}>
                 {renderFixedClassRegistrationPanel({ showBulk: true })}
                 {renderFixedClassListPanel()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editingClassInfo && isAdmin && (
+          <div className="modal-overlay" onClick={() => setEditingClassInfo(null)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '20px', maxWidth: '420px', width: '94%', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: PRIMARY_PINK }}>고정수업 수정</h2>
+                <button onClick={() => setEditingClassInfo(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+              </div>
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>수업명</div>
+                    <input className="input-field" value={editingClassInfo.name} onChange={(e) => setEditingClassInfo((p) => ({ ...p, name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>요일</div>
+                    <select className="input-field" value={editingClassInfo.weekday} onChange={(e) => setEditingClassInfo((p) => ({ ...p, weekday: e.target.value }))}>
+                      {weekdayLabels.map((label, idx) => <option key={label} value={String(idx)}>{label}요일</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>시작 시간</div>
+                    <input className="input-field" type="time" value={editingClassInfo.startTime} onChange={(e) => setEditingClassInfo((p) => ({ ...p, startTime: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>수업 시간(분)</div>
+                    <input className="input-field" type="number" min="1" value={editingClassInfo.duration} onChange={(e) => setEditingClassInfo((p) => ({ ...p, duration: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>코인</div>
+                  <input className="input-field" type="number" min="0" value={editingClassInfo.coins} onChange={(e) => setEditingClassInfo((p) => ({ ...p, coins: e.target.value }))} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>수업 시작일</div>
+                    <input className="input-field" type="date" value={editingClassInfo.startDate} onChange={(e) => setEditingClassInfo((p) => ({ ...p, startDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>수업 종료일</div>
+                    <input className="input-field" type="date" value={editingClassInfo.endDate} onChange={(e) => setEditingClassInfo((p) => ({ ...p, endDate: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>메모</div>
+                  <textarea className="input-field" value={editingClassInfo.memo} onChange={(e) => setEditingClassInfo((p) => ({ ...p, memo: e.target.value }))} style={{ minHeight: '50px', resize: 'vertical' }} />
+                </div>
+                <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '10px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 900, color: '#666', marginBottom: '8px' }}>적용 범위</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    {[['all', '전체'], ['today_onwards', '오늘부터'], ['tomorrow_onwards', '내일부터']].map(([scope, label]) => (
+                      <button
+                        key={scope}
+                        onClick={async () => {
+                          const safeName = editingClassInfo.name.trim()
+                          if (!safeName) return
+                          const parsedWeekday = parseInt(editingClassInfo.weekday, 10)
+                          const normalizedStart = normalizeStartTime(editingClassInfo.startTime) || editingClassInfo.task.startTime
+                          const dur = Math.max(1, parseInt(editingClassInfo.duration, 10) || Number(editingClassInfo.task.duration || 50))
+                          const coins = Math.max(0, parseInt(editingClassInfo.coins, 10) || 0)
+                          const patch = {
+                            name: safeName,
+                            weekday: Number.isNaN(parsedWeekday) ? editingClassInfo.task.weekday : parsedWeekday,
+                            startTime: normalizedStart,
+                            duration: dur,
+                            expectedEndTime: buildExpectedEndTime(normalizedStart, dur),
+                            coins,
+                            startDate: editingClassInfo.startDate.trim() || null,
+                            endDate: editingClassInfo.endDate.trim() || null,
+                            classStartDate: editingClassInfo.startDate.trim() || null,
+                            classEndDate: editingClassInfo.endDate.trim() || null,
+                            memo: editingClassInfo.memo.trim(),
+                            note: editingClassInfo.memo.trim()
+                          }
+                          await updateFixedClassTask(editingClassInfo.kidId, editingClassInfo.task.id, patch, scope)
+                          setEditingClassInfo(null)
+                        }}
+                        className="btn-primary"
+                        style={{ padding: '10px 6px', fontSize: '12px' }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

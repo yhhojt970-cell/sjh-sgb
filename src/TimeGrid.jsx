@@ -268,9 +268,9 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
                 textDecorationStyle: memo ? 'dotted' : 'solid',
                 textUnderlineOffset: memo ? '3px' : 0
               }}
-              title={memo ? '클릭해서 메모 보기' : ''}
+              title={task.name}
             >
-              {task.name} {isDone && <Heart size={14} color={PRIMARY_PINK} fill={PRIMARY_PINK} style={{ display: 'inline', marginLeft: '4px' }} />}
+              {task.name} {isDone && (task.type === 'study' ? <Heart size={14} color={PRIMARY_PINK} fill={PRIMARY_PINK} style={{ display: 'inline', marginLeft: '4px' }} /> : <Star size={14} color="#fbbf24" fill="#fbbf24" style={{ display: 'inline', marginLeft: '4px' }} />)}
             </div>
             {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -441,11 +441,13 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
         <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
           {essentialChecklist.map((item) => {
             const matchName = String(item.name || '').trim().toLowerCase();
-            const isDone = doneLogs.some((log) => String(log.name || '').trim().toLowerCase().includes(matchName) && log.status === 'completed') || 
-                           tasks.some((task) => String(task.name || '').trim().toLowerCase().includes(matchName) && task.completed && task.date === todayStr)
+            const matchingLog = doneLogs.find((log) => String(log.name || '').trim().toLowerCase().includes(matchName) && log.status === 'completed' && log.date === todayStr)
+            const matchingTask = !matchingLog && tasks.find((task) => String(task.name || '').trim().toLowerCase().includes(matchName) && task.completed && task.date === todayStr)
+            const isDone = !!matchingLog || !!matchingTask
+            const isStudy = matchingLog?.type === 'study' || matchingTask?.type === 'study'
             return (
               <div key={item.id} style={{ flexShrink: 0, padding: '6px 12px', background: isDone ? LIGHT_PINK : '#fff', border: isDone ? `1px solid ${PRIMARY_PINK}` : '1px solid #ffdeeb', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', color: isDone ? PRIMARY_PINK : '#999', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                {isDone ? <Heart size={12} fill={PRIMARY_PINK} color={PRIMARY_PINK} /> : null}
+                {isDone ? (isStudy ? <Heart size={12} fill={PRIMARY_PINK} color={PRIMARY_PINK} /> : <Star size={12} fill="#fbbf24" color="#fbbf24" />) : null}
                 {item.name}
               </div>
             )
