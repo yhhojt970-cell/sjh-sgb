@@ -957,12 +957,28 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 {isOpen ? (
                   <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
                     {classItems.map((task) => (
-                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                          {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분) · {getTaskCoins(task)}코인
+                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분) ·
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={getTaskCoins(task)}
+                              onBlur={async (e) => {
+                                const val = parseInt(e.target.value, 10)
+                                if (!Number.isNaN(val) && val !== getTaskCoins(task)) {
+                                  await updateFixedClassTask(kidId, task.id, { coins: val })
+                                }
+                              }}
+                              style={{ width: '42px', height: '20px', border: '1px solid #ffe1ea', borderRadius: '4px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: PRIMARY_PINK }}
+                              title="코인 수정"
+                            />
+                            코인
+                          </div>
                         </div>
-                        <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
                           <button
                             onClick={async () => {
                               const nextName = prompt('수업 이름', task.name || '')
