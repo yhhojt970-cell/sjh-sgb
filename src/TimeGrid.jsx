@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CalendarX, Check, Clock, Edit3, Heart, MessageSquare, Play, RotateCcw, Save, Sparkles, Star, Trash2, UserX, X } from 'lucide-react'
@@ -152,28 +152,26 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const taskCoins = getTaskCoins(task)
   const canManageTask = isAdmin || task.type !== 'class'
   const [tick, setTick] = useState(Date.now())
-  
+  const [overtimePopup, setOvertimePopup] = useState(false)
+  const [extended, setExtended] = useState(false)
+  const autoCompletedRef = useRef(false)
+
   const isDone = todayLog?.status === 'completed' || (task.completed && task.date === todayStr)
   const editRequested = todayLog?.editRequested || false
 
   useEffect(() => {
     if (task.type === 'class' || isDone || !actualStart) return
+    autoCompletedRef.current = false
     const timer = setInterval(() => setTick(Date.now()), 10000)
     return () => clearInterval(timer)
   }, [task.type, isDone, actualStart])
 
   const liveDuration = isDone ? (todayLog?.durationActual || actualDuration) : (actualStart ? computeDuration(actualStart, format(new Date(tick), 'HH:mm')) : null)
 
-  const handleStartTimer = () => {
-    if (actualStart) return
-    const now = format(new Date(), 'HH:mm')
-    onUpdateTask(task.id, { startTimeActual: now, actualStartTime: now, status: 'studying' })
-  }
-
-  const handleComplete = () => {
+  const buildCompletionUpdates = (coins) => {
     const nowDate = new Date()
     const now = format(nowDate, 'HH:mm')
-    const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now, coins: taskCoins }
+    const updates = { completed: true, status: 'completed', endTimeActual: now, actualEndTime: now, coins }
     if (actualStart) {
       const [h, m] = actualStart.split(':').map(Number)
       const startedAt = new Date()
@@ -183,7 +181,37 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
       updates.actualDuration = minutes
       updates.durationMinutes = minutes
     }
-    onUpdateTask(task.id, updates)
+    return updates
+  }
+
+  useEffect(() => {
+    if (task.type === 'class' || isDone || !actualStart || liveDuration === null) return
+    if (liveDuration >= 240 && !autoCompletedRef.current) {
+      autoCompletedRef.current = true
+      onUpdateTask(task.id, { ...buildCompletionUpdates(0), autoCompleted: true })
+      return
+    }
+    if (!extended && liveDuration >= 120 && !overtimePopup) setOvertimePopup(true)
+    if (extended && liveDuration >= 240 && !autoCompletedRef.current) {
+      autoCompletedRef.current = true
+      onUpdateTask(task.id, { ...buildCompletionUpdates(0), autoCompleted: true })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveDuration, isDone, actualStart, extended, overtimePopup, task.type])
+
+  const handleStartTimer = () => {
+    if (actualStart) return
+    const now = format(new Date(), 'HH:mm')
+    onUpdateTask(task.id, { startTimeActual: now, actualStartTime: now, status: 'studying' })
+  }
+
+  const handleComplete = () => {
+    onUpdateTask(task.id, buildCompletionUpdates(taskCoins))
+  }
+
+  const handleOvertimeComplete = () => {
+    setOvertimePopup(false)
+    onUpdateTask(task.id, { ...buildCompletionUpdates(0), autoCompleted: true })
   }
 
   const saveEdit = () => {
@@ -405,8 +433,12 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             {!isDone && !actualStart && <button onPointerDown={(event) => { event.stopPropagation(); handleStartTimer() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}><Play size={14} />공부 시작</button>}
             {actualStart && !isDone && <button onPointerDown={(event) => { event.stopPropagation(); handleComplete() }} style={{ flex: 1, padding: '8px', borderRadius: '10px', background: '#3b82f6', color: 'white', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: isMobile ? '12px' : '13px' }}>공부중</button>}
             {isDone && (
-              <div style={{ fontSize: '11px', color: '#42c99b', fontWeight: 'bold', lineHeight: 1.2 }}>
-                {actualStart && (todayLog?.endTimeActual || task.endTimeActual || actualEnd) ? `✨ ${actualStart} ~ ${todayLog?.endTimeActual || task.endTimeActual || actualEnd} (${liveDuration ?? '-'}분)` : '✨ 완료'}
+              <div style={{ fontSize: '11px', fontWeight: 'bold', lineHeight: 1.2, color: todayLog?.autoCompleted ? '#94a3b8' : '#42c99b' }}>
+                {todayLog?.autoCompleted
+                  ? `⏰ 자동 완료됨 · 코인 미적립`
+                  : (actualStart && (todayLog?.endTimeActual || task.endTimeActual || actualEnd)
+                      ? `✨ ${actualStart} ~ ${todayLog?.endTimeActual || task.endTimeActual || actualEnd} (${liveDuration ?? '-'}분)`
+                      : '✨ 완료')}
               </div>
             )}
             {!isDone && actualStart && (
@@ -417,6 +449,38 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           </>
         )}
       </div>
+
+      {overtimePopup && !isDone && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setOvertimePopup(false)}>
+          <div style={{ background: 'white', borderRadius: '24px', padding: '28px 24px', maxWidth: '320px', width: '100%', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>⏰</div>
+            <h3 style={{ fontWeight: 900, color: '#334155', margin: '0 0 8px', fontSize: '17px' }}>아직 공부 중인가요?</h3>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px', lineHeight: 1.6 }}>
+              <strong>{task.name}</strong>을 시작한 지<br />
+              <strong>2시간</strong>이 지났어요.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <button
+                onClick={handleOvertimeComplete}
+                style={{ flex: 1, padding: '12px', borderRadius: '12px', background: PRIMARY_PINK, color: 'white', border: 'none', fontWeight: 900, fontSize: '14px', cursor: 'pointer' }}
+              >
+                완료했어요
+              </button>
+              {!extended && (
+                <button
+                  onClick={() => { setExtended(true); setOvertimePopup(false) }}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', fontWeight: 900, fontSize: '14px', cursor: 'pointer' }}
+                >
+                  조금 더 할게요
+                </button>
+              )}
+            </div>
+            <p style={{ color: '#94a3b8', fontSize: '11px', margin: 0, lineHeight: 1.5 }}>
+              연장은 한 번만 가능해요.<br />총 4시간이 지나면 자동으로 완료되며 코인은 적립되지 않아요.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
