@@ -162,6 +162,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const autoCompletedRef = useRef(false)
 
   const isDone = todayLog?.status === 'completed' || (task.completed && task.date === todayStr)
+  const displayCoins = isDone && todayLog ? (todayLog.coins ?? taskCoins) : taskCoins
   const editRequested = todayLog?.editRequested || false
 
   useEffect(() => {
@@ -338,7 +339,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             </div>
             {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
-              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){(isClassTask || taskCoins > 0) ? ` · ${taskCoins}코인` : ''}
+              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){(isClassTask || displayCoins > 0) ? ` · ${displayCoins}코인` : ''}
             </div>
           </div>
         </div>

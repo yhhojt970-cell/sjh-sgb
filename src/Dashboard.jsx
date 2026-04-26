@@ -1160,8 +1160,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const log = doneLogs.find(l => l.id === logId)
     if (!log) return
     const newCoins = Number(coins)
+    const prevCoins = Number(log.coins || 0)
+    const coinHistory = prevCoins !== newCoins
+      ? [...(log.coinHistory || []), { from: prevCoins, to: newCoins, changedAt: format(new Date(), 'yyyy-MM-dd') }]
+      : (log.coinHistory || [])
     const nextLogs = doneLogs.map(l =>
-      l.id === logId ? { ...l, coins: newCoins, status } : l
+      l.id === logId ? { ...l, coins: newCoins, status, coinHistory } : l
     )
     let nextTasks = tasks
     if (log.type !== 'class' && status === '' && log.status !== '') {
@@ -1729,7 +1733,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   const logId = `${id}-${todayStr}`
                   const existingLog = doneLogs.find(l => l.id === logId)
                   if (existingLog) {
-                    const updatedLogs = doneLogs.map(l => l.id === logId ? { ...l, coins: Number(_doneLogCoinsUpdate) } : l)
+                    const prevCoins = Number(existingLog.coins || 0)
+                    const newCoinsVal = Number(_doneLogCoinsUpdate)
+                    const coinHistory = prevCoins !== newCoinsVal
+                      ? [...(existingLog.coinHistory || []), { from: prevCoins, to: newCoinsVal, changedAt: format(new Date(), 'yyyy-MM-dd') }]
+                      : (existingLog.coinHistory || [])
+                    const updatedLogs = doneLogs.map(l => l.id === logId ? { ...l, coins: newCoinsVal, coinHistory } : l)
                     setDoneLogs(updatedLogs)
                     await persistKidState({ doneLogs: updatedLogs, tasks: next })
                     return
@@ -1874,7 +1883,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                 {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}
                                 {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
                               </div>
-                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>
+                                {getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}
+                              </div>
+                              {log.coinHistory && log.coinHistory.length > 0 && (
+                                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                  {log.coinHistory.map((h, i) => (
+                                    <span key={i}><span style={{ textDecoration: 'line-through' }}>{h.from}코인</span> → {h.to}코인 <span style={{ color: '#cbd5e1' }}>({h.changedAt})</span></span>
+                                  ))}
+                                </div>
+                              )}
                             </button>
                             <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
                               {log.autoCompleted && (
