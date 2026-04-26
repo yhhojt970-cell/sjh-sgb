@@ -1178,6 +1178,23 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     await appendEditAuditLog(log, Number(log.coins || 0), newCoins, status, '기록 수정')
   }
 
+  const grantAutoCompletedCoins = async (log) => {
+    const task = tasks.find(t => String(t.id) === String(log.taskId))
+    const newCoins = getTaskCoins(task)
+    const nextLogs = doneLogs.map(l =>
+      l.id === log.id ? { ...l, coins: newCoins, autoCompleted: false } : l
+    )
+    setDoneLogs(nextLogs)
+    await persistKidState({ doneLogs: nextLogs })
+    await appendCoinLog({
+      kidId: activeKidId,
+      subjectName: `자동완료 코인 적립: ${log.name} (${log.date}) · 0 → ${newCoins}`,
+      beforeCoins: availableCoins,
+      afterCoins: availableCoins + newCoins,
+      actionType: 'log_edit'
+    })
+  }
+
   const openFullSettingEdit = (log) => {
     setLogEditDraft(null)
     setShowDailyLog(false)
@@ -1837,10 +1854,23 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
                           <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
                             <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
-                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name} {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}</div>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>
+                                {log.name}
+                                {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}
+                                {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
+                              </div>
                               <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}</div>
                             </button>
-                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                              {log.autoCompleted && (
+                                <button
+                                  onClick={() => grantAutoCompletedCoins(log)}
+                                  title="코인 적립"
+                                  style={{ border: 'none', background: '#fef9c3', color: '#b45309', padding: '0 8px', height: '32px', borderRadius: '10px', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                >
+                                  코인 적립
+                                </button>
+                              )}
                               <button
                                 onClick={() => setLogEditDraft(isEditingThis ? null : { logId: log.id, coins: Number(log.coins || 0), status: log.status || '' })}
                                 title="수정"

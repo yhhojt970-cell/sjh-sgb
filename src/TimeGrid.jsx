@@ -211,7 +211,12 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
 
   const handleOvertimeComplete = () => {
     setOvertimePopup(false)
-    onUpdateTask(task.id, { ...buildCompletionUpdates(0), autoCompleted: true })
+    const isActualToday = task.date === format(new Date(), 'yyyy-MM-dd')
+    const coins = isActualToday ? taskCoins : 0
+    onUpdateTask(task.id, {
+      ...buildCompletionUpdates(coins),
+      ...(isActualToday ? {} : { autoCompleted: true })
+    })
   }
 
   const saveEdit = () => {
