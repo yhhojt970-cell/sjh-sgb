@@ -488,6 +488,20 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
   }
 
+  const handleSubjectCoinChange = async ({ kidId, subjectName, beforeCoins, afterCoins, scope }) => {
+    if (!isAdmin || beforeCoins === afterCoins) return
+    await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
+    if ((scope === 'today' || scope === 'all') && kidId === activeKidId) {
+      const nextTasks = tasks.map((task) => {
+        if (task.name !== subjectName) return task
+        if (scope === 'today' && task.date !== todayStr) return task
+        return { ...task, coins: afterCoins }
+      })
+      setTasks(nextTasks)
+      await persistKidState({ tasks: nextTasks })
+    }
+  }
+
   const deleteCoinLog = async (logId) => {
     if (!isAdmin || !isCloud) return
     const logToDelete = coinLogs.find(l => l.id === logId)
@@ -1665,10 +1679,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 kids={kidsList}
                 kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
                 onSubjectsChange={() => {}}
-              onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
-                if (!isAdmin || beforeCoins === afterCoins) return
-                await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
-              }}
+              onCoinChange={handleSubjectCoinChange}
               isAdmin={isAdmin}
               allowDrag={!isMobile}
             />
@@ -2219,10 +2230,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               kids={kidsList}
               kidLabels={Object.fromEntries(kidsList.map((id) => [id, getFullName(id)]))}
               onSubjectsChange={() => {}}
-              onCoinChange={async ({ kidId, subjectName, beforeCoins, afterCoins }) => {
-                if (!isAdmin || beforeCoins === afterCoins) return
-                await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
-              }}
+              onCoinChange={handleSubjectCoinChange}
               isAdmin={isAdmin}
               allowDrag={!isMobile && !isAdmin}
               collapsibleAdminSections

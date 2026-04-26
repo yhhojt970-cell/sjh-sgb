@@ -33,6 +33,7 @@ function PaletteItem({
   const [draftName, setDraftName] = useState(subject.name)
   const [draftColor, setDraftColor] = useState(subject.color)
   const [draftCoins, setDraftCoins] = useState(subject.coins ?? 1)
+  const [coinScopeDialog, setCoinScopeDialog] = useState(null) // { newCoins }
 
   useEffect(() => {
     setDraftName(subject.name)
@@ -110,10 +111,7 @@ function PaletteItem({
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onSave(subject.name, { ...subject, coins: Math.max(0, safeCoins - 1) })
-                }}
+                onClick={(event) => { event.stopPropagation(); setCoinScopeDialog({ newCoins: Math.max(0, safeCoins - 1) }) }}
                 style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: '#666', borderRadius: '6px', padding: '2px 6px', fontWeight: 900, cursor: 'pointer' }}
                 title="코인 -1"
               >
@@ -122,10 +120,7 @@ function PaletteItem({
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onSave(subject.name, { ...subject, coins: safeCoins + 1 })
-                }}
+                onClick={(event) => { event.stopPropagation(); setCoinScopeDialog({ newCoins: safeCoins + 1 }) }}
                 style={{ border: 'none', background: '#ff4d6d20', color: '#ff4d6d', borderRadius: '6px', padding: '2px 6px', fontWeight: 900, cursor: 'pointer' }}
                 title="코인 +1"
               >
@@ -145,6 +140,38 @@ function PaletteItem({
           ) : null}
         </span>
       </div>
+      {coinScopeDialog !== null && (
+        <div style={{ marginTop: '8px', padding: '10px', background: '#fff7fa', border: '1px solid #ffd6e0', borderRadius: '10px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 900, color: '#333', marginBottom: '8px' }}>
+            {safeCoins} → {coinScopeDialog.newCoins}코인 · 어디에 적용할까요?
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+            {[
+              { label: '기본 설정만', scope: 'template' },
+              { label: '오늘 일정도', scope: 'today' },
+              { label: '전체 일정도', scope: 'all' },
+            ].map(({ label, scope }) => (
+              <button
+                key={scope}
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onSave(subject.name, { ...subject, coins: coinScopeDialog.newCoins }, scope); setCoinScopeDialog(null) }}
+                style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #ffd6e0', background: 'white', color: '#333', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setCoinScopeDialog(null) }}
+              style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#666', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -312,12 +339,12 @@ export function SubjectPalette({
                 <PaletteItem
                   key={`${kidId}-${subject.name}`}
                   subject={subject}
-                  onSave={(previousName, nextSubject) => {
+                  onSave={(previousName, nextSubject, scope = 'template') => {
                     const beforeCoins = Number(subject.coins || 0)
                     const afterCoins = Number(nextSubject.coins || 0)
                     updateKidSubjects(kidId, (items) => (items || []).map((item) => (item.name === previousName ? nextSubject : item)))
                     if (typeof onCoinChange === 'function' && beforeCoins !== afterCoins) {
-                      onCoinChange({ kidId, subjectName: nextSubject.name || previousName, beforeCoins, afterCoins })
+                      onCoinChange({ kidId, subjectName: nextSubject.name || previousName, beforeCoins, afterCoins, scope })
                     }
                   }}
                   onDelete={(name) => updateKidSubjects(kidId, (items) => (items || []).filter((item) => item.name !== name))}

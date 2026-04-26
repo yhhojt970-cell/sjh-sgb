@@ -443,8 +443,12 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer', flexShrink: 0 }} />
-            <span style={{ fontSize: '12px', color: '#555', fontWeight: 700, flexShrink: 0 }}>코인</span>
-            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" style={{ width: '70px', flexShrink: 0 }} />
+            {isAdmin && (
+              <>
+                <span style={{ fontSize: '12px', color: '#555', fontWeight: 700, flexShrink: 0 }}>코인</span>
+                <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" style={{ width: '70px', flexShrink: 0 }} />
+              </>
+            )}
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>

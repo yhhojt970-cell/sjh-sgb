@@ -79,3 +79,5 @@ VITE_FIREBASE_APP_ID
 - 현재 비밀번호 / 새 비밀번호 입력
 - `비밀번호 변경하기`
 
+## 11. 사용량측정
+npx claude-token-meter
