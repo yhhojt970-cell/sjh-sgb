@@ -4,19 +4,23 @@ import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import {
   Calendar,
+  CalendarX,
   Check,
   ChevronLeft,
   ChevronRight,
   Coins,
+  Edit3,
   Gift,
   LayoutGrid,
   LogOut,
   PiggyBank,
   Plus,
+  RotateCcw,
   Send,
   Settings,
   Trash,
   Trophy,
+  UserX,
   Users,
   X as CloseIcon
 } from 'lucide-react'
@@ -151,6 +155,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [auditLogFilter, setAuditLogFilter] = useState('all') // 'all', 'study', 'coin', 'allowance'
   const [auditDateFilter, setAuditDateFilter] = useState('all') // 'all', 'today'
   const [dismissedEditRequestKey, setDismissedEditRequestKey] = useState('')
+  const [requestEditDraft, setRequestEditDraft] = useState(null) // { logId, coins, status }
+  const [logEditDraft, setLogEditDraft] = useState(null) // { logId, coins, status }
 
   const [newReward, setNewReward] = useState({ text: '', coins: 50, scope: 'shared', kidId: '' })
   const [newEssential, setNewEssential] = useState('')
@@ -1114,6 +1120,49 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setDoneLogs(prev => prev.map((l) => l.id === logId ? { ...l, editRequested: false } : l))
   }
 
+  const saveRequestEdit = async () => {
+    if (!requestEditDraft) return
+    const { logId, coins, status } = requestEditDraft
+    const nextLogs = doneLogs.map(l =>
+      l.id === logId ? { ...l, coins: Number(coins), status, editRequested: false } : l
+    )
+    setDoneLogs(nextLogs)
+    setRequestEditDraft(null)
+    await persistKidState({ doneLogs: nextLogs })
+  }
+
+  const saveLogEdit = async () => {
+    if (!logEditDraft) return
+    const { logId, coins, status } = logEditDraft
+    const log = doneLogs.find(l => l.id === logId)
+    const nextLogs = doneLogs.map(l =>
+      l.id === logId ? { ...l, coins: Number(coins), status } : l
+    )
+    let nextTasks = tasks
+    if (log && log.type !== 'class' && status === '' && log.status !== '') {
+      nextTasks = tasks.map(t =>
+        String(t.id) === String(log.taskId) && t.date === log.date
+          ? { ...t, completed: false, status: '', startTimeActual: '', actualStartTime: '', endTimeActual: '', actualEndTime: '', durationActual: 0, actualDuration: 0, durationMinutes: 0 }
+          : t
+      )
+    }
+    setDoneLogs(nextLogs)
+    if (nextTasks !== tasks) setTasks(nextTasks)
+    setLogEditDraft(null)
+    await persistKidState({ doneLogs: nextLogs, tasks: nextTasks })
+  }
+
+  const openFullSettingEdit = (log) => {
+    setLogEditDraft(null)
+    setShowDailyLog(false)
+    if (log.type === 'class') {
+      const task = tasks.find(t => String(t.id) === String(log.taskId))
+      if (task) setEditingClassInfo({ ...task, kidId: activeKidId })
+    } else {
+      setShowPalette(true)
+    }
+  }
+
   const getStatusLabel = (status) => ({
     completed: '완료',
     holiday: '휴강',
@@ -1669,23 +1718,82 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         </main>
 
         {shouldShowEditRequestPopup && (
-          <div className="modal-overlay" onClick={() => setDismissedEditRequestKey(editRequestKey)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: '420px', width: '92%', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div className="modal-overlay" onClick={() => { setDismissedEditRequestKey(editRequestKey); setRequestEditDraft(null) }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '16px' : '22px', maxWidth: '440px', width: '92%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: PRIMARY_PINK }}>수정 요청 {pendingEditRequests.length}건</h2>
-                <button onClick={() => setDismissedEditRequestKey(editRequestKey)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+                <button onClick={() => { setDismissedEditRequestKey(editRequestKey); setRequestEditDraft(null) }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
               </div>
-              <div style={{ display: 'grid', gap: '8px' }}>
-                {pendingEditRequests.map((log) => (
-                  <button
-                    key={`request-${log.id}`}
-                    onClick={() => { resolveEditRequest(log.id); setDismissedEditRequestKey(editRequestKey); focusTaskFromLog(log) }}
-                    style={{ border: '1px solid #ffd6e0', background: '#fff7fa', borderRadius: '12px', padding: '10px 12px', textAlign: 'left', cursor: 'pointer' }}
-                  >
-                    <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name}</div>
-                    <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{log.date} · {getStatusLabel(log.status)} · 누르면 카드로 이동</div>
-                  </button>
-                ))}
+              <div style={{ display: 'grid', gap: '10px' }}>
+                {pendingEditRequests.map((log) => {
+                  const isExpanded = requestEditDraft?.logId === log.id
+                  const classStatuses = [
+                    { value: 'completed', label: '완료', bg: '#42c99b' },
+                    { value: 'holiday', label: '휴강', bg: '#3b82f6' },
+                    { value: 'absent', label: '결석', bg: '#ef4444' },
+                    { value: '', label: '초기화', bg: '#94a3b8' }
+                  ]
+                  return (
+                    <div key={`request-${log.id}`} style={{ border: `1px solid ${isExpanded ? PRIMARY_PINK : '#ffd6e0'}`, borderRadius: '14px', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#fff7fa', gap: '8px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name}</div>
+                          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>{log.date} · {getStatusLabel(log.status)} · {Number(log.coins || 0)}코인</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
+                          <button
+                            onClick={() => setRequestEditDraft(isExpanded ? null : { logId: log.id, coins: Number(log.coins || 0), status: log.status || '' })}
+                            style={{ padding: '6px 10px', borderRadius: '9px', border: `1px solid ${PRIMARY_PINK}`, background: isExpanded ? PRIMARY_PINK : 'white', color: isExpanded ? 'white' : PRIMARY_PINK, fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
+                          >
+                            {isExpanded ? '닫기' : '수정'}
+                          </button>
+                          <button
+                            onClick={() => { resolveEditRequest(log.id); if (requestEditDraft?.logId === log.id) setRequestEditDraft(null) }}
+                            style={{ padding: '6px 10px', borderRadius: '9px', border: '1px solid #e2e8f0', background: 'white', color: '#64748b', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
+                          >
+                            무시
+                          </button>
+                        </div>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: '12px', background: 'white', borderTop: `1px solid ${LIGHT_PINK}` }}>
+                          <div style={{ marginBottom: '10px' }}>
+                            <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
+                            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                              {classStatuses.map(({ value, label, bg }) => (
+                                <button
+                                  key={value}
+                                  onClick={() => setRequestEditDraft(prev => ({ ...prev, status: value }))}
+                                  style={{ padding: '6px 10px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: 900, cursor: 'pointer', background: requestEditDraft.status === value ? bg : '#f1f5f9', color: requestEditDraft.status === value ? 'white' : '#555' }}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                            <span style={{ fontSize: '12px', color: '#555', fontWeight: 700 }}>코인</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={requestEditDraft.coins}
+                              onChange={(e) => setRequestEditDraft(prev => ({ ...prev, coins: e.target.value }))}
+                              style={{ width: '72px', padding: '6px 8px', borderRadius: '8px', border: '1px solid #ffd6e0', textAlign: 'center', fontWeight: 900, fontSize: '14px' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={saveRequestEdit} className="btn-primary" style={{ flex: 1, padding: '9px', fontSize: '13px' }}>
+                              저장 & 해결
+                            </button>
+                            <button onClick={() => setRequestEditDraft(null)} style={{ flex: 1, padding: '9px', border: '1px solid #ddd', borderRadius: '10px', background: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -1703,17 +1811,92 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <section style={{ border: '1px solid #ffe1ea', borderRadius: '14px', padding: '12px' }}>
                   <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>고정수업 / 과목</h3>
                   <div style={{ display: 'grid', gap: '8px' }}>
-                    {dailyActivityLogs.map((log) => (
-                      <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-                        <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
-                          <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name} {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}</div>
-                          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}</div>
-                        </button>
-                        <button onClick={() => deleteDoneLog(log.id)} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash size={15} />
-                        </button>
-                      </div>
-                    ))}
+                    {dailyActivityLogs.map((log) => {
+                      const isEditingThis = logEditDraft?.logId === log.id
+                      const classStatuses = [
+                        { value: 'completed', label: '완료', bg: '#42c99b' },
+                        { value: 'holiday', label: '휴강', bg: '#3b82f6' },
+                        { value: 'absent', label: '결석', bg: '#ef4444' },
+                        { value: '', label: '초기화', bg: '#94a3b8' }
+                      ]
+                      return (
+                        <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
+                          <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+                            <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name} {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}</div>
+                            </button>
+                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                              <button
+                                onClick={() => setLogEditDraft(isEditingThis ? null : { logId: log.id, coins: Number(log.coins || 0), status: log.status || '' })}
+                                title="수정"
+                                style={{ border: 'none', background: isEditingThis ? '#dbe7ff' : '#f1f5f9', color: isEditingThis ? '#355eb5' : '#666', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                              <button onClick={() => deleteDoneLog(log.id)} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                <Trash size={15} />
+                              </button>
+                            </div>
+                          </div>
+                          {isEditingThis && (
+                            <div style={{ padding: '12px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
+                              {log.type === 'class' && (
+                                <div style={{ marginBottom: '10px' }}>
+                                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
+                                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                    {classStatuses.map(({ value, label, bg }) => (
+                                      <button
+                                        key={value}
+                                        onClick={() => setLogEditDraft(prev => ({ ...prev, status: value }))}
+                                        style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === value ? bg : '#f1f5f9', color: logEditDraft.status === value ? 'white' : '#555' }}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {log.type !== 'class' && (
+                                <div style={{ marginBottom: '10px' }}>
+                                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>완료 상태</div>
+                                  <button
+                                    onClick={() => setLogEditDraft(prev => ({ ...prev, status: prev.status === '' ? log.status : '' }))}
+                                    style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === '' ? '#94a3b8' : '#f1f5f9', color: logEditDraft.status === '' ? 'white' : '#555' }}
+                                  >
+                                    {logEditDraft.status === '' ? '✓ 완료 취소됨' : '완료 취소하기'}
+                                  </button>
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                <span style={{ fontSize: '12px', color: '#555', fontWeight: 700 }}>코인</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={logEditDraft.coins}
+                                  onChange={(e) => setLogEditDraft(prev => ({ ...prev, coins: e.target.value }))}
+                                  style={{ width: '66px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', textAlign: 'center', fontWeight: 900, fontSize: '14px' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', gap: '5px' }}>
+                                <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>
+                                  이번 건만 저장
+                                </button>
+                                <button
+                                  onClick={() => openFullSettingEdit(log)}
+                                  style={{ flex: 2, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
+                                >
+                                  전체 설정 변경
+                                </button>
+                                <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                     {dailyActivityLogs.length === 0 ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 수업/과목 기록이 없어요.</div> : null}
                   </div>
                 </section>
