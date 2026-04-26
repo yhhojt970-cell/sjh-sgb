@@ -338,6 +338,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
               )}
             </div>
             {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
+            {task._isOrphanedLog && <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, marginTop: '2px' }}>📋 기록만 있는 완료 항목</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
               {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){(isClassTask || displayCoins > 0) ? ` · ${displayCoins}코인` : ''}
             </div>
@@ -345,7 +346,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
         </div>
         {(canManageTask || (isClassTask && currentStatus && !isAdmin)) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-            {canManageTask && isAdmin && task.type === 'class' && (
+            {canManageTask && isAdmin && task.type === 'class' && !task._isOrphanedLog && (
               <button
                 onPointerDown={(event) => {
                   event.stopPropagation()
@@ -357,7 +358,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
                 <RotateCcw size={14} />
               </button>
             )}
-            {canManageTask && (
+            {canManageTask && !task._isOrphanedLog && (
               <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing((prev) => !prev) }} style={{ color: '#666', border: 'none', background: '#f1f5f9', borderRadius: '8px', padding: '5px', cursor: 'pointer' }}>
                 <Edit3 size={14} />
               </button>
@@ -377,7 +378,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
                 {editRequested ? '요청됨' : '수정요청'}
               </button>
             )}
-            {canManageTask && (
+            {canManageTask && !task._isOrphanedLog && (
               <button onPointerDown={(event) => { event.stopPropagation(); onDeleteTask(task.id) }} style={{ color: '#ff4d6d', border: 'none', background: 'none', cursor: 'pointer' }}>
                 <Trash2 size={16} />
               </button>
@@ -386,7 +387,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
         )}
       </div>
 
-      {isEditing && canManageTask ? (
+      {isEditing && canManageTask && !task._isOrphanedLog ? (
         <div style={{ display: 'grid', gap: '6px', marginBottom: '10px', background: '#fff7fa', border: '1px solid #ffdbe5', borderRadius: '10px', padding: '10px' }}>
           <input className="input-field" value={draftName} onChange={(event) => setDraftName(event.target.value)} placeholder="일정 이름" />
           <div style={{ display: 'flex', gap: '6px' }}>

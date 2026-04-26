@@ -1098,6 +1098,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     () => doneLogs.filter((log) => log.date === todayStr && log.type !== 'gift'),
     [doneLogs, todayStr]
   )
+
+  const orphanedVirtualTasks = useMemo(() =>
+    dailyActivityLogs
+      .filter(log => !todayTasks.some(task => String(task.id) === String(log.taskId)))
+      .map(log => ({
+        id: log.taskId,
+        name: log.name,
+        type: log.type || 'study',
+        date: log.date,
+        startTime: log.startTimeActual || '07:00',
+        duration: log.durationActual || 30,
+        expectedEndTime: log.endTimeActual || '07:30',
+        completed: true,
+        status: log.status,
+        coins: Number(log.coins || 0),
+        _isOrphanedLog: true
+      })),
+    [dailyActivityLogs, todayTasks]
+  )
   const dailyGiftLogs = useMemo(
     () => doneLogs.filter((log) => log.date === todayStr && log.type === 'gift'),
     [doneLogs, todayStr]
@@ -1647,7 +1666,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
           <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden', flex: 1, width: '100%' }}>
             <TimeGrid
-              tasks={todayTasks}
+              tasks={[...todayTasks, ...orphanedVirtualTasks]}
               doneLogs={doneLogs}
               todayStr={todayStr}
               isAdmin={isAdmin}
