@@ -1099,24 +1099,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     [doneLogs, todayStr]
   )
 
-  const orphanedVirtualTasks = useMemo(() =>
-    dailyActivityLogs
-      .filter(log => !todayTasks.some(task => String(task.id) === String(log.taskId)))
-      .map(log => ({
-        id: log.taskId,
-        name: log.name,
-        type: log.type || 'study',
-        date: log.date,
-        startTime: log.startTimeActual || '07:00',
-        duration: log.durationActual || 30,
-        expectedEndTime: log.endTimeActual || '07:30',
-        completed: true,
-        status: log.status,
-        coins: Number(log.coins || 0),
-        _isOrphanedLog: true
-      })),
-    [dailyActivityLogs, todayTasks]
-  )
   const dailyGiftLogs = useMemo(
     () => doneLogs.filter((log) => log.date === todayStr && log.type === 'gift'),
     [doneLogs, todayStr]
@@ -1666,7 +1648,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
           <div style={{ ...glassStyle, borderRadius: '24px', overflow: 'hidden', flex: 1, width: '100%' }}>
             <TimeGrid
-              tasks={[...todayTasks, ...orphanedVirtualTasks]}
+              tasks={todayTasks}
               doneLogs={doneLogs}
               todayStr={todayStr}
               isAdmin={isAdmin}
@@ -1766,16 +1748,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 persistKidState({ tasks: next })
               }}
               onDeleteTask={(id) => {
-                const deletedTask = tasks.find((t) => String(t.id) === String(id))
                 const next = tasks.filter((t) => String(t.id) !== String(id))
+                const nextLogs = doneLogs.filter((log) => String(log.taskId) !== String(id))
                 setTasks(next)
-                if (deletedTask && deletedTask.type !== 'class') {
-                  const nextLogs = doneLogs.filter((log) => !(String(log.taskId) === String(id) && log.date === todayStr))
-                  setDoneLogs(nextLogs)
-                  persistKidState({ tasks: next, doneLogs: nextLogs })
-                } else {
-                  persistKidState({ tasks: next })
-                }
+                setDoneLogs(nextLogs)
+                persistKidState({ tasks: next, doneLogs: nextLogs })
               }}
               onAddSpecialEvent={(hour) => {
                 const name = prompt('특별 일정 이름')
