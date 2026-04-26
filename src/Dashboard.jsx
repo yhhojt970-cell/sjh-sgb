@@ -4,7 +4,6 @@ import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import {
   Calendar,
-  CalendarX,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -15,12 +14,10 @@ import {
   LogOut,
   PiggyBank,
   Plus,
-  RotateCcw,
   Send,
   Settings,
   Trash,
   Trophy,
-  UserX,
   Users,
   X as CloseIcon
 } from 'lucide-react'
@@ -33,6 +30,13 @@ import { auth } from './firebase'
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const DEFAULT_DURATION = 50
+
+const CLASS_STATUSES = [
+  { value: 'completed', label: '완료', bg: '#42c99b' },
+  { value: 'holiday', label: '휴강', bg: '#3b82f6' },
+  { value: 'absent', label: '결석', bg: '#ef4444' },
+  { value: '', label: '초기화', bg: '#94a3b8' }
+]
 
 const buildExpectedEndTime = (startTime, duration = DEFAULT_DURATION) => {
   const [hour, minute] = String(startTime || '00:00').split(':').map(Number)
@@ -1120,32 +1124,34 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setDoneLogs(prev => prev.map((l) => l.id === logId ? { ...l, editRequested: false } : l))
   }
 
+  const appendEditAuditLog = async (log, oldCoins, newCoins, status, labelPrefix) => {
+    const coinDelta = newCoins - oldCoins
+    const labelParts = []
+    if (status !== log.status) labelParts.push(`상태: ${getStatusLabel(log.status) || '없음'} → ${getStatusLabel(status) || '초기화'}`)
+    if (coinDelta !== 0) labelParts.push(`코인: ${oldCoins} → ${newCoins}`)
+    if (labelParts.length === 0) return
+    await appendCoinLog({
+      kidId: activeKidId,
+      subjectName: `${labelPrefix}: ${log.name} (${log.date}) · ${labelParts.join(', ')}`,
+      beforeCoins: availableCoins,
+      afterCoins: availableCoins + coinDelta,
+      actionType: 'log_edit'
+    })
+  }
+
   const saveRequestEdit = async () => {
     if (!requestEditDraft) return
     const { logId, coins, status } = requestEditDraft
     const log = doneLogs.find(l => l.id === logId)
     if (!log) return
-    const oldCoins = Number(log.coins || 0)
     const newCoins = Number(coins)
-    const coinDelta = newCoins - oldCoins
     const nextLogs = doneLogs.map(l =>
       l.id === logId ? { ...l, coins: newCoins, status, editRequested: false } : l
     )
     setDoneLogs(nextLogs)
     setRequestEditDraft(null)
     await persistKidState({ doneLogs: nextLogs })
-    const labelParts = []
-    if (status !== log.status) labelParts.push(`상태: ${getStatusLabel(log.status) || '없음'} → ${getStatusLabel(status) || '초기화'}`)
-    if (coinDelta !== 0) labelParts.push(`코인: ${oldCoins} → ${newCoins}`)
-    if (labelParts.length > 0) {
-      await appendCoinLog({
-        kidId: activeKidId,
-        subjectName: `수정요청 처리: ${log.name} (${log.date}) · ${labelParts.join(', ')}`,
-        beforeCoins: availableCoins,
-        afterCoins: availableCoins + coinDelta,
-        actionType: 'log_edit'
-      })
-    }
+    await appendEditAuditLog(log, Number(log.coins || 0), newCoins, status, '수정요청 처리')
   }
 
   const saveLogEdit = async () => {
@@ -1153,9 +1159,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const { logId, coins, status } = logEditDraft
     const log = doneLogs.find(l => l.id === logId)
     if (!log) return
-    const oldCoins = Number(log.coins || 0)
     const newCoins = Number(coins)
-    const coinDelta = newCoins - oldCoins
     const nextLogs = doneLogs.map(l =>
       l.id === logId ? { ...l, coins: newCoins, status } : l
     )
@@ -1171,18 +1175,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     if (nextTasks !== tasks) setTasks(nextTasks)
     setLogEditDraft(null)
     await persistKidState({ doneLogs: nextLogs, tasks: nextTasks })
-    const labelParts = []
-    if (status !== log.status) labelParts.push(`상태: ${getStatusLabel(log.status) || '없음'} → ${getStatusLabel(status) || '초기화'}`)
-    if (coinDelta !== 0) labelParts.push(`코인: ${oldCoins} → ${newCoins}`)
-    if (labelParts.length > 0) {
-      await appendCoinLog({
-        kidId: activeKidId,
-        subjectName: `기록 수정: ${log.name} (${log.date}) · ${labelParts.join(', ')}`,
-        beforeCoins: availableCoins,
-        afterCoins: availableCoins + coinDelta,
-        actionType: 'log_edit'
-      })
-    }
+    await appendEditAuditLog(log, Number(log.coins || 0), newCoins, status, '기록 수정')
   }
 
   const openFullSettingEdit = (log) => {
@@ -1555,7 +1548,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               {isAdmin && (
                 <button onClick={() => setShowDailyLog(true)} className="header-btn-original" style={{ position: 'relative' }} title="오늘의 기록 관리">
                   <Calendar size={isMobile ? 18 : 22} />
-                  {doneLogs.some(l => l.editRequested) && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
+                  {pendingEditRequests.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
                 </button>
               )}
               <button onClick={() => setShowAppLauncher(true)} className="header-btn-original" title="학습 앱">
@@ -1760,12 +1753,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div style={{ display: 'grid', gap: '10px' }}>
                 {pendingEditRequests.map((log) => {
                   const isExpanded = requestEditDraft?.logId === log.id
-                  const classStatuses = [
-                    { value: 'completed', label: '완료', bg: '#42c99b' },
-                    { value: 'holiday', label: '휴강', bg: '#3b82f6' },
-                    { value: 'absent', label: '결석', bg: '#ef4444' },
-                    { value: '', label: '초기화', bg: '#94a3b8' }
-                  ]
                   return (
                     <div key={`request-${log.id}`} style={{ border: `1px solid ${isExpanded ? PRIMARY_PINK : '#ffd6e0'}`, borderRadius: '14px', overflow: 'hidden' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#fff7fa', gap: '8px' }}>
@@ -1793,7 +1780,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                           <div style={{ marginBottom: '10px' }}>
                             <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
                             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                              {classStatuses.map(({ value, label, bg }) => (
+                              {CLASS_STATUSES.map(({ value, label, bg }) => (
                                 <button
                                   key={value}
                                   onClick={() => setRequestEditDraft(prev => ({ ...prev, status: value }))}
@@ -1846,12 +1833,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   <div style={{ display: 'grid', gap: '8px' }}>
                     {dailyActivityLogs.map((log) => {
                       const isEditingThis = logEditDraft?.logId === log.id
-                      const classStatuses = [
-                        { value: 'completed', label: '완료', bg: '#42c99b' },
-                        { value: 'holiday', label: '휴강', bg: '#3b82f6' },
-                        { value: 'absent', label: '결석', bg: '#ef4444' },
-                        { value: '', label: '초기화', bg: '#94a3b8' }
-                      ]
                       return (
                         <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
                           <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
@@ -1878,7 +1859,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                 <div style={{ marginBottom: '10px' }}>
                                   <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
                                   <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                                    {classStatuses.map(({ value, label, bg }) => (
+                                    {CLASS_STATUSES.map(({ value, label, bg }) => (
                                       <button
                                         key={value}
                                         onClick={() => setLogEditDraft(prev => ({ ...prev, status: value }))}
