@@ -1677,7 +1677,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         startTimeActual: updates.startTimeActual || existingLog?.startTimeActual || task.startTimeActual || task.actualStartTime || '',
                         endTimeActual: updates.endTimeActual || existingLog?.endTimeActual || task.endTimeActual || task.actualEndTime || '',
                         durationActual: updates.durationActual || existingLog?.durationActual || task.durationActual || task.actualDuration || 0,
-                        editRequested: updates.editRequested !== undefined ? updates.editRequested : !!existingLog?.editRequested
+                        editRequested: updates.editRequested !== undefined ? updates.editRequested : !!existingLog?.editRequested,
+                        autoCompleted: updates.autoCompleted !== undefined ? updates.autoCompleted : !!existingLog?.autoCompleted
                       }
                       nextLogs = [...doneLogs.filter((l) => l.id !== logId), newLog]
                     }
@@ -1840,7 +1841,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           <div className="modal-overlay" onClick={() => setShowDailyLog(false)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '16px' : '24px', maxWidth: '620px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>{format(selectedDate, 'yyyy년 M월 d일')} 기록 관리</h2>
+                <div>
+                  <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: '0 0 2px' }}>{format(selectedDate, 'yyyy년 M월 d일')} 기록 관리</h2>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>현재 코인 합계 <strong style={{ color: '#c96d00' }}>{availableCoins}</strong>코인</div>
+                </div>
                 <button onClick={() => setShowDailyLog(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
               </div>
 
@@ -1892,7 +1896,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                     {CLASS_STATUSES.map(({ value, label, bg }) => (
                                       <button
                                         key={value}
-                                        onClick={() => setLogEditDraft(prev => ({ ...prev, status: value }))}
+                                        onClick={() => {
+                                          const defaultCoins = value === 'completed' ? Number(log.coins || 0) : 0
+                                          setLogEditDraft(prev => ({ ...prev, status: value, coins: defaultCoins }))
+                                        }}
                                         style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === value ? bg : '#f1f5f9', color: logEditDraft.status === value ? 'white' : '#555' }}
                                       >
                                         {label}
