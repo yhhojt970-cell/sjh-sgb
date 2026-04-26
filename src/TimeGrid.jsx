@@ -18,7 +18,7 @@ const buildExpectedEndTime = (startTime, duration = 50) => {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
-function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent }) {
+function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
   const hourTasks = useMemo(
@@ -74,7 +74,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
       <div style={{ flex: 1, minWidth: 0, padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
           <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? 0 : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)', boxSizing: 'border-box' }}>
-            <TaskCard task={task} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} />
+            <TaskCard task={task} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} essentialChecklist={essentialChecklist} />
           </div>
         ))}
       </div>
@@ -82,7 +82,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
   )
 }
 
-function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile }) {
+function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, essentialChecklist = [] }) {
   const getTaskCoins = (targetTask) => {
     if (!targetTask) return 0
     const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
@@ -121,6 +121,10 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
 
   const memo = task.memo || task.note || ''
   const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
+  const isEssential = useMemo(() => {
+    const taskNameLower = String(task.name || '').trim().toLowerCase()
+    return essentialChecklist.some(item => taskNameLower.includes(String(item.name || '').trim().toLowerCase()))
+  }, [task.name, essentialChecklist])
   const isClassTask = task.type === 'class'
   const currentStatus = isClassTask ? (todayLog?.status || '') : ''
   const actualStart = todayLog?.startTimeActual || task.actualStartTime || task.startTimeActual || ''
@@ -303,7 +307,10 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
               }}
               title={task.name}
             >
-              {task.name} {isDone && <Star size={14} color="#fbbf24" fill="#fbbf24" style={{ display: 'inline', marginLeft: '4px' }} />}
+              {task.name} {isDone && (isEssential
+                ? <Heart size={14} color={PRIMARY_PINK} fill={PRIMARY_PINK} style={{ display: 'inline', marginLeft: '4px' }} />
+                : <Star size={14} color="#fbbf24" fill="#fbbf24" style={{ display: 'inline', marginLeft: '4px' }} />
+              )}
             </div>
             {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -525,7 +532,7 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
 
       <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         {hours.map((hour) => (
-          <TimeSlot key={hour} hour={hour} tasks={tasks} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} />
+          <TimeSlot key={hour} hour={hour} tasks={tasks} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} essentialChecklist={essentialChecklist} />
         ))}
       </div>
     </div>
