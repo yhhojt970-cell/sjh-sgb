@@ -82,6 +82,33 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
   )
 }
 
+const getCoinTierStyle = (coins, baseColor, isDone, isClassTask) => {
+  const tier = Math.min(Math.max(Number(coins) || 0, 0), 4)
+  const bl = [
+    `3px solid ${baseColor}40`,
+    `4px solid ${baseColor}88`,
+    `5px solid ${baseColor}CC`,
+    `6px solid ${baseColor}`,
+    `8px solid #f59e0b`,
+  ][tier]
+  const sh = [
+    '0 2px 8px rgba(0,0,0,0.04)',
+    '0 4px 12px rgba(0,0,0,0.06)',
+    `0 4px 16px ${baseColor}30`,
+    `0 6px 20px ${baseColor}50`,
+    '0 6px 24px rgba(245,158,11,0.45)',
+  ][tier]
+  let bg
+  if (isDone) {
+    bg = tier >= 4 ? '#fffdf5' : '#f8fafc'
+  } else if (isClassTask) {
+    bg = ['#eef0f5','linear-gradient(135deg,#f7f9ff 0%,#f3f7ff 100%)',`linear-gradient(135deg,#eef3ff 0%,${baseColor}18 100%)`,`linear-gradient(135deg,#e8efff 0%,${baseColor}28 100%)`,'linear-gradient(135deg,#e8efff 0%,#fffbeb 100%)'][tier]
+  } else {
+    bg = ['#f5f5f5','linear-gradient(135deg,#ffffff 0%,#fff8fb 100%)',`linear-gradient(135deg,#fafafa 0%,${baseColor}18 100%)`,`linear-gradient(135deg,#ffffff 0%,${baseColor}28 100%)`,'linear-gradient(135deg,#fffdf0 0%,#fffbeb 100%)'][tier]
+  }
+  return { background: bg, borderLeft: bl, boxShadow: sh }
+}
+
 function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, essentialChecklist = [] }) {
   const getTaskCoins = (targetTask) => {
     if (!targetTask) return 0
@@ -164,6 +191,8 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const isDone = todayLog?.status === 'completed' || (task.completed && task.date === todayStr)
   const displayCoins = isDone && todayLog ? (todayLog.coins ?? taskCoins) : taskCoins
   const editRequested = todayLog?.editRequested || false
+  const coinAccent = task.color || PRIMARY_PINK
+  const coinTier = getCoinTierStyle(displayCoins, coinAccent, isDone, isClassTask)
 
   useEffect(() => {
     if (task.type === 'class' || isDone || !actualStart) return
@@ -281,16 +310,16 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
-    background: isDone ? '#f8fafc' : (isClassTask ? 'linear-gradient(135deg, #f7f9ff 0%, #f3f7ff 100%)' : 'linear-gradient(135deg, #ffffff 0%, #fff8fb 100%)'),
-    borderLeft: `6px solid ${task.color || PRIMARY_PINK}`,
     borderRadius: '15px',
     padding: isMobile ? '8px 10px' : '15px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
     position: 'relative',
-    border: isDone ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${(task.color || PRIMARY_PINK)}20`),
+    border: isDone ? '1px solid #e2e8f0' : (isClassTask ? '1.5px dashed #b7c8ff' : `1px solid ${coinAccent}20`),
+    borderLeft: coinTier.borderLeft,
     height: isMobile ? 'auto' : '100%',
     boxSizing: 'border-box',
-    maxWidth: '100%'
+    maxWidth: '100%',
+    background: coinTier.background,
+    boxShadow: coinTier.boxShadow,
   }
 
   if (task.type === 'event') {
@@ -347,7 +376,18 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             </div>
             {editRequested && <div style={{ fontSize: '10px', color: PRIMARY_PINK, fontWeight: 900, marginTop: '2px' }}>⚠️ 수정 요청 중</div>}
             <div style={{ fontSize: '12px', color: '#666' }}>
-              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분){(isClassTask || displayCoins > 0) ? ` · ${displayCoins}코인` : ''}
+              {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)
+              {(isClassTask || displayCoins > 0) && (
+                <span>
+                  {' · '}
+                  {displayCoins > 0 && (
+                    <span style={{ color: displayCoins >= 4 ? '#d97706' : displayCoins >= 3 ? '#c96d00' : coinAccent, fontWeight: 900, letterSpacing: '1px' }}>
+                      {'★'.repeat(Math.min(displayCoins, 3))}{displayCoins > 3 ? `×${displayCoins}` : ''}{' '}
+                    </span>
+                  )}
+                  {displayCoins}코인
+                </span>
+              )}
             </div>
           </div>
         </div>

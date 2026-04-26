@@ -136,6 +136,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [sharedRewards, setSharedRewards] = useState([])
   const [spentCoins, setSpentCoins] = useState(0)
   const [allowanceEntries, setAllowanceEntries] = useState([])
+  const [allowanceCoinReward, setAllowanceCoinReward] = useState(1)
   const [doneLogs, setDoneLogs] = useState([])
 
   const [showSettings, setShowSettings] = useState(false)
@@ -320,6 +321,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setEssentials(nextEssentials)
       setSpentCoins(Number(data?.spentCoins || 0))
       setAllowanceEntries(Array.isArray(data?.allowanceEntries) ? data.allowanceEntries : [])
+      setAllowanceCoinReward(Number(data?.allowanceCoinReward ?? 1))
       setDoneLogs(Array.isArray(data?.doneLogs) ? data.doneLogs : [])
       setDataLoaded(true)
 
@@ -840,9 +842,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const title = String(newAllowance.title || '').trim()
     const amount = Number(newAllowance.amount || 0)
     if (!title || amount <= 0) return
+    const entryDate = newAllowance.date || format(new Date(), 'yyyy-MM-dd')
     const entry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      date: newAllowance.date || format(new Date(), 'yyyy-MM-dd'),
+      date: entryDate,
       type: newAllowance.type === 'expense' ? 'expense' : 'income',
       amount,
       title,
@@ -850,14 +853,31 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
     const next = [...allowanceEntries, entry]
     setAllowanceEntries(next)
-    await persistKidState({ allowanceEntries: next })
+    let nextLogs = doneLogs
+    if (!isAdmin && allowanceCoinReward > 0) {
+      const coinEntry = {
+        id: `allowance-coin-${entry.id}`,
+        taskId: `allowance-coin-${entry.id}`,
+        allowanceId: entry.id,
+        name: '용돈기입장 작성',
+        type: 'allowance-coin',
+        date: entryDate,
+        status: 'completed',
+        coins: allowanceCoinReward,
+      }
+      nextLogs = [...doneLogs, coinEntry]
+      setDoneLogs(nextLogs)
+    }
+    await persistKidState({ allowanceEntries: next, doneLogs: nextLogs })
     setNewAllowance((prev) => ({ ...prev, amount: '', title: '', memo: '' }))
   }
 
   const handleDeleteAllowance = async (id) => {
     const next = allowanceEntries.filter((entry) => entry.id !== id)
+    const nextLogs = doneLogs.filter((l) => l.allowanceId !== id)
     setAllowanceEntries(next)
-    await persistKidState({ allowanceEntries: next })
+    setDoneLogs(nextLogs)
+    await persistKidState({ allowanceEntries: next, doneLogs: nextLogs })
   }
 
   const getKidDocIdForWrite = async (kidId) => {
@@ -1218,6 +1238,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       setShowPalette(true)
     }
   }
+
+  const formatAmount = (n) => Number(n || 0).toLocaleString('ko-KR')
 
   const getStatusLabel = (status) => ({
     completed: '완료',
@@ -2049,7 +2071,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       <div key={`daily-allowance-${entry.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{entry.title}</div>
-                          <div style={{ color: entry.type === 'income' ? '#166534' : '#991b1b', fontSize: '11px', marginTop: '3px' }}>{entry.type === 'income' ? '+' : '-'}{entry.amount}원{entry.memo ? ` · ${entry.memo}` : ''}</div>
+                          <div style={{ color: entry.type === 'income' ? '#166534' : '#991b1b', fontSize: '11px', marginTop: '3px' }}>{entry.type === 'income' ? '+' : '-'}{formatAmount(entry.amount)}원{entry.memo ? ` · ${entry.memo}` : ''}</div>
                         </div>
                         <button onClick={() => { if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(entry.id) }} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                           <Trash size={15} />
@@ -2258,15 +2280,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
                   <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '8px' }}>
                     <div style={{ fontSize: '11px', color: '#166534' }}>받은 금액</div>
-                    <div style={{ fontWeight: 900, color: '#166534' }}>+{allowanceSummary.totalIncome}</div>
+                    <div style={{ fontWeight: 900, color: '#166534' }}>+{formatAmount(allowanceSummary.totalIncome)}</div>
                   </div>
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '8px' }}>
                     <div style={{ fontSize: '11px', color: '#991b1b' }}>쓴 금액</div>
-                    <div style={{ fontWeight: 900, color: '#991b1b' }}>-{allowanceSummary.totalExpense}</div>
+                    <div style={{ fontWeight: 900, color: '#991b1b' }}>-{formatAmount(allowanceSummary.totalExpense)}</div>
                   </div>
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '8px' }}>
                     <div style={{ fontSize: '11px', color: '#1d4ed8' }}>잔액</div>
-                    <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{allowanceSummary.balance}</div>
+                    <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{formatAmount(allowanceSummary.balance)}</div>
                   </div>
                 </div>
 
@@ -2274,7 +2296,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   {allowanceEntries.slice().reverse().map((entry) => (
                     <div key={entry.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                       <div>
-                        <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{entry.amount})</div>
+                        <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{formatAmount(entry.amount)})</div>
                         <div style={{ color: '#999' }}>{entry.date}{entry.memo ? ` · ${entry.memo}` : ''}</div>
                       </div>
                       <button onClick={() => handleDeleteAllowance(entry.id)} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}>
@@ -2305,6 +2327,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
               {isAdmin && (
                 <div style={{ display: 'grid', gap: '20px', marginBottom: '25px' }}>
+                  <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '8px' }}>용돈기입장 작성 코인</h3>
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>아이가 직접 용돈기입장을 쓰면 아래 코인 수 만큼 지급돼요 (0: 지급 안 함)</div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        className="input-field"
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={allowanceCoinReward}
+                        onChange={(e) => setAllowanceCoinReward(Math.max(0, Number(e.target.value) || 0))}
+                        style={{ width: '80px' }}
+                      />
+                      <span style={{ fontSize: '13px', color: '#666' }}>코인</span>
+                      <button
+                        className="btn-primary"
+                        onClick={() => persistKidState({ allowanceCoinReward })}
+                        style={{ padding: '10px 16px', fontSize: '13px' }}
+                      >
+                        저장
+                      </button>
+                    </div>
+                  </div>
                   <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '18px', border: '1px solid #e2e8f0' }}>
                     <h3 style={{ fontSize: '15px', fontWeight: 900, marginBottom: '12px' }}>보상 등록</h3>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
@@ -2400,15 +2445,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
                 <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '8px' }}>
                   <div style={{ fontSize: '11px', color: '#166534' }}>받은 금액</div>
-                  <div style={{ fontWeight: 900, color: '#166534' }}>+{allowanceSummary.totalIncome}</div>
+                  <div style={{ fontWeight: 900, color: '#166534' }}>+{formatAmount(allowanceSummary.totalIncome)}</div>
                 </div>
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '8px' }}>
                   <div style={{ fontSize: '11px', color: '#991b1b' }}>쓴 금액</div>
-                  <div style={{ fontWeight: 900, color: '#991b1b' }}>-{allowanceSummary.totalExpense}</div>
+                  <div style={{ fontWeight: 900, color: '#991b1b' }}>-{formatAmount(allowanceSummary.totalExpense)}</div>
                 </div>
                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '8px' }}>
                   <div style={{ fontSize: '11px', color: '#1d4ed8' }}>잔액</div>
-                  <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{allowanceSummary.balance}</div>
+                  <div style={{ fontWeight: 900, color: '#1d4ed8' }}>{formatAmount(allowanceSummary.balance)}</div>
                 </div>
               </div>
 
@@ -2416,7 +2461,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 {(showAllAllowanceEntries ? allowanceEntries.slice().reverse() : allowanceEntries.slice().reverse().slice(0, 5)).map((entry) => (
                   <div key={entry.id} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                     <div>
-                      <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{entry.amount})</div>
+                      <div style={{ fontWeight: 800 }}>{entry.title} ({entry.type === 'income' ? '+' : '-'}{formatAmount(entry.amount)})</div>
                       <div style={{ color: '#999' }}>{entry.date}{entry.memo ? ` · ${entry.memo}` : ''}</div>
                     </div>
                     <button onClick={() => handleDeleteAllowance(entry.id)} style={{ border: 'none', background: 'none', color: PRIMARY_PINK, cursor: 'pointer' }}>
