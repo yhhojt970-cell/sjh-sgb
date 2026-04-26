@@ -605,11 +605,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
 
   const buildCoinEntries = (logList = [], taskList = []) => {
+    const seenIds = new Set()
     const seenTaskDates = new Set()
+
     const logEntries = (logList || [])
       .filter((log) => log?.status === 'completed' && Number(log.coins || 0) > 0)
       .map((log) => {
-        seenTaskDates.add(`${log.taskId || ''}-${log.date || ''}`)
+        seenIds.add(`${String(log.taskId || '')}-${log.date || ''}`)
+        seenTaskDates.add(`${String(log.taskId || '')}-${log.date || ''}`)
         return {
           id: log.id || `${log.taskId || log.name}-${log.date || ''}`,
           date: log.date || '',
@@ -619,10 +622,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       })
 
     const legacyEntries = (taskList || [])
-      .filter((task) => task.completed && getTaskCoins(task) > 0)
-      .filter((task) => !seenTaskDates.has(`${task.id || ''}-${task.date || ''}`))
+      .filter((task) => task.completed && getTaskCoins(task) > 0 && task.date)
+      .filter((task) => !seenIds.has(`${String(task.id || '')}-${task.date || ''}`))
       .map((task) => ({
-        id: task.id || `${task.name}-${task.date || ''}-${task.startTime || ''}`,
+        id: `legacy-${task.id}-${task.date}`,
         date: task.date || '',
         title: task.name || '학습',
         coins: getTaskCoins(task)
@@ -1855,7 +1858,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         {showDailyLog && isAdmin && (
           <div className="modal-overlay" onClick={() => setShowDailyLog(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '16px' : '24px', maxWidth: '620px', width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '14px' : '24px', maxWidth: isMobile ? '100%' : '620px', width: isMobile ? '100%' : '95%', maxHeight: '88vh', overflowY: 'auto', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <div>
                   <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: '0 0 2px' }}>{format(selectedDate, 'yyyy년 M월 d일')} 기록 관리</h2>
@@ -1873,8 +1876,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       return (
                         <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
                           <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-                            <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
-                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>
+                            <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {log.name}
                                 {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}
                                 {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
@@ -2419,7 +2422,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
         {showCoinLedger && (
           <div className="modal-overlay" onClick={() => setShowCoinLedger(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '18px' : '24px', maxWidth: isMobile ? '95%' : '520px', width: '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto' }}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '14px' : '24px', maxWidth: isMobile ? '100%' : '520px', width: isMobile ? '100%' : '100%', maxHeight: isMobile ? '88vh' : '80vh', overflowY: 'auto', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: 0 }}>코인 획득 내역</h2>
                 <button onClick={() => setShowCoinLedger(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
@@ -2450,23 +2453,31 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     acc[d].total += Number(entry.coins || 0)
                     return acc
                   }, {})
-                  
-                  return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date)).map((group) => {
+
+                  const sortedGroups = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date))
+                  let runningTotal = availableCoins + spentCoins
+
+                  return sortedGroups.map((group) => {
                     const groupKey = group.date
                     const isExpanded = !!expandedCoinGroups[groupKey]
-                    
+                    const cumulativeAtDay = runningTotal
+                    runningTotal -= group.total
+
                     return (
                       <div key={groupKey} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-                        <div 
+                        <div
                           onClick={() => setExpandedCoinGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
                           style={{ background: '#f8fafc', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
                         >
                           <div style={{ fontSize: '13px', fontWeight: 900, color: '#334155' }}>
-                            {group.date} <span style={{ color: '#94a3b8', fontWeight: 'normal', fontSize: '11px', marginLeft: '4px' }}>({group.items.length}건)</span>
+                            {group.date}
+                            <span style={{ color: '#94a3b8', fontWeight: 'normal', fontSize: '11px', marginLeft: '6px' }}>({group.items.length}건)</span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong style={{ color: '#c96d00', fontSize: '14px' }}>+{group.total}</strong>
-                            <span style={{ fontSize: '10px', color: '#64748b' }}>{isExpanded ? '▲' : '▼'}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: '#c96d00', fontSize: '13px', fontWeight: 900 }}>+{group.total}</span>
+                            <span style={{ color: '#94a3b8', fontSize: '11px' }}>/</span>
+                            <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 700 }}>{cumulativeAtDay}코인</span>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{isExpanded ? '▲' : '▼'}</span>
                           </div>
                         </div>
                         {isExpanded && (
