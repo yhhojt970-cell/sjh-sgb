@@ -147,6 +147,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showFamilyManager, setShowFamilyManager] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
+  const [fixedClassCoinDialog, setFixedClassCoinDialog] = useState(null) // { taskId, kidId, newCoins, currentCoins }
   const [showCoinLedger, setShowCoinLedger] = useState(false)
   const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
@@ -1344,11 +1345,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     )
   }
 
-  const askFixedClassScope = () => {
-    const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
-    if (scopePrompt === null) return null
-    return scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
-  }
 
   const promptFixedClassPatch = (task) => {
     const nextName = prompt('수업 이름', task.name || '')
@@ -1420,31 +1416,28 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </button>
                 {isOpen ? (
                   <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
-                    {classItems.map((task) => (
-                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '8px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    {classItems.map((task) => {
+                      const taskCoinsNow = getTaskCoins(task)
+                      const isCoinDialogOpen = fixedClassCoinDialog?.taskId === task.id && fixedClassCoinDialog?.kidId === kidId
+                      return (
+                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
+                        <div style={{ padding: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
                           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                             <span>{weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
                             <span>·</span>
-                            <input
-                              type="number"
-                              min="0"
-                              defaultValue={getTaskCoins(task)}
-                              onBlur={async (event) => {
-                                const nextCoins = Math.max(0, parseInt(event.target.value, 10) || 0)
-                                if (nextCoins === getTaskCoins(task)) return
-                                const scope = askFixedClassScope()
-                                if (!scope) {
-                                  event.target.value = String(getTaskCoins(task))
-                                  return
-                                }
-                                await updateFixedClassTask(kidId, task.id, { coins: nextCoins }, scope)
-                              }}
-                              style={{ width: '46px', height: '22px', border: '1px solid #ffe1ea', borderRadius: '6px', textAlign: 'center', fontSize: '11px', fontWeight: 800, color: PRIMARY_PINK }}
-                              title="코인 수정"
-                            />
-                            <span>코인</span>
+                            <span style={{ color: PRIMARY_PINK, fontWeight: 800 }}>+{taskCoinsNow}코인</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                              <button
+                                onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: Math.max(0, taskCoinsNow - 1), currentCoins: taskCoinsNow })}
+                                style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: '#666', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+                              >-</button>
+                              <button
+                                onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: taskCoinsNow + 1, currentCoins: taskCoinsNow })}
+                                style={{ border: 'none', background: '#ff4d6d20', color: '#ff4d6d', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+                              >+</button>
+                            </span>
                             {(task.startDate || task.classStartDate || task.endDate || task.classEndDate) ? (
                               <span style={{ color: '#94a3b8' }}>({task.startDate || task.classStartDate || '시작 제한 없음'} ~ {task.endDate || task.classEndDate || '종료 제한 없음'})</span>
                             ) : null}
@@ -1478,8 +1471,40 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                             삭제
                           </button>
                         </div>
+                        </div>
+                        {isCoinDialogOpen && (
+                          <div style={{ padding: '10px 12px', borderTop: '1px solid #ffe1ea', background: '#fff7fa' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 900, color: '#333', marginBottom: '8px' }}>
+                              {fixedClassCoinDialog.currentCoins} → {fixedClassCoinDialog.newCoins}코인 · 어디에 적용할까요?
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                              {[
+                                { label: '전체', scope: 'all' },
+                                { label: '오늘부터', scope: 'today_onwards' },
+                                { label: '내일부터', scope: 'tomorrow_onwards' },
+                              ].map(({ label, scope }) => (
+                                <button
+                                  key={scope}
+                                  onClick={async () => {
+                                    await updateFixedClassTask(kidId, task.id, { coins: fixedClassCoinDialog.newCoins }, scope)
+                                    setFixedClassCoinDialog(null)
+                                  }}
+                                  style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #ffd6e0', background: 'white', color: '#333', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => setFixedClassCoinDialog(null)}
+                                style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#666', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    )})}
                     {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
                   </div>
                 ) : null}

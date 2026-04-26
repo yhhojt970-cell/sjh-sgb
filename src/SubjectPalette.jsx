@@ -70,9 +70,6 @@ function PaletteItem({
           {canEditColor ? (
             <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '30px', height: '30px', border: 'none', background: 'none', padding: 0 }} />
           ) : null}
-          {canEditCoins ? (
-            <input type="number" className="input-field" style={{ width: '68px', padding: '6px 8px', fontSize: '12px' }} value={draftCoins} onChange={(event) => setDraftCoins(parseInt(event.target.value, 10) || 0)} placeholder="코인" />
-          ) : null}
           <button
             type="button"
             style={{ border: 'none', background: '#42c99b20', color: '#42c99b', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer' }}
@@ -83,7 +80,7 @@ function PaletteItem({
                 ...subject,
                 name: nextName,
                 color: canEditColor ? draftColor : subject.color,
-                coins: canEditCoins ? draftCoins : (subject.coins ?? 1)
+                coins: subject.coins ?? 1
               })
               setIsEditing(false)
             }}
