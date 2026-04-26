@@ -1123,23 +1123,44 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const saveRequestEdit = async () => {
     if (!requestEditDraft) return
     const { logId, coins, status } = requestEditDraft
+    const log = doneLogs.find(l => l.id === logId)
+    if (!log) return
+    const oldCoins = Number(log.coins || 0)
+    const newCoins = Number(coins)
+    const coinDelta = newCoins - oldCoins
     const nextLogs = doneLogs.map(l =>
-      l.id === logId ? { ...l, coins: Number(coins), status, editRequested: false } : l
+      l.id === logId ? { ...l, coins: newCoins, status, editRequested: false } : l
     )
     setDoneLogs(nextLogs)
     setRequestEditDraft(null)
     await persistKidState({ doneLogs: nextLogs })
+    const labelParts = []
+    if (status !== log.status) labelParts.push(`상태: ${getStatusLabel(log.status) || '없음'} → ${getStatusLabel(status) || '초기화'}`)
+    if (coinDelta !== 0) labelParts.push(`코인: ${oldCoins} → ${newCoins}`)
+    if (labelParts.length > 0) {
+      await appendCoinLog({
+        kidId: activeKidId,
+        subjectName: `수정요청 처리: ${log.name} (${log.date}) · ${labelParts.join(', ')}`,
+        beforeCoins: availableCoins,
+        afterCoins: availableCoins + coinDelta,
+        actionType: 'log_edit'
+      })
+    }
   }
 
   const saveLogEdit = async () => {
     if (!logEditDraft) return
     const { logId, coins, status } = logEditDraft
     const log = doneLogs.find(l => l.id === logId)
+    if (!log) return
+    const oldCoins = Number(log.coins || 0)
+    const newCoins = Number(coins)
+    const coinDelta = newCoins - oldCoins
     const nextLogs = doneLogs.map(l =>
-      l.id === logId ? { ...l, coins: Number(coins), status } : l
+      l.id === logId ? { ...l, coins: newCoins, status } : l
     )
     let nextTasks = tasks
-    if (log && log.type !== 'class' && status === '' && log.status !== '') {
+    if (log.type !== 'class' && status === '' && log.status !== '') {
       nextTasks = tasks.map(t =>
         String(t.id) === String(log.taskId) && t.date === log.date
           ? { ...t, completed: false, status: '', startTimeActual: '', actualStartTime: '', endTimeActual: '', actualEndTime: '', durationActual: 0, actualDuration: 0, durationMinutes: 0 }
@@ -1150,6 +1171,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     if (nextTasks !== tasks) setTasks(nextTasks)
     setLogEditDraft(null)
     await persistKidState({ doneLogs: nextLogs, tasks: nextTasks })
+    const labelParts = []
+    if (status !== log.status) labelParts.push(`상태: ${getStatusLabel(log.status) || '없음'} → ${getStatusLabel(status) || '초기화'}`)
+    if (coinDelta !== 0) labelParts.push(`코인: ${oldCoins} → ${newCoins}`)
+    if (labelParts.length > 0) {
+      await appendCoinLog({
+        kidId: activeKidId,
+        subjectName: `기록 수정: ${log.name} (${log.date}) · ${labelParts.join(', ')}`,
+        beforeCoins: availableCoins,
+        afterCoins: availableCoins + coinDelta,
+        actionType: 'log_edit'
+      })
+    }
   }
 
   const openFullSettingEdit = (log) => {
