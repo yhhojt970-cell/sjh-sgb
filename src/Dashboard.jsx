@@ -1710,20 +1710,31 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   }
                 }
 
+                const { _doneLogCoinsUpdate, ...cleanUpdates } = updates
                 const targetTask = tasks.find((task) => String(task.id) === String(id))
                 if (targetTask?.type === 'class' && isAdmin) {
                   const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
                   if (scopePrompt === null) return
                   const scope = scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
-                  await updateFixedClassTask(activeKidId, id, updates, scope)
+                  await updateFixedClassTask(activeKidId, id, cleanUpdates, scope)
                   return
                 }
 
                 const next = tasks.map((task) => {
                   if (task.id !== id) return task
-                  return { ...task, ...updates }
+                  return { ...task, ...cleanUpdates }
                 })
                 setTasks(next)
+                if (_doneLogCoinsUpdate !== undefined) {
+                  const logId = `${id}-${todayStr}`
+                  const existingLog = doneLogs.find(l => l.id === logId)
+                  if (existingLog) {
+                    const updatedLogs = doneLogs.map(l => l.id === logId ? { ...l, coins: Number(_doneLogCoinsUpdate) } : l)
+                    setDoneLogs(updatedLogs)
+                    await persistKidState({ doneLogs: updatedLogs, tasks: next })
+                    return
+                  }
+                }
                 persistKidState({ tasks: next })
               }}
               onDeleteTask={(id) => {
@@ -1929,20 +1940,34 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                                   style={{ width: '66px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', textAlign: 'center', fontWeight: 900, fontSize: '14px' }}
                                 />
                               </div>
-                              <div style={{ display: 'flex', gap: '5px' }}>
-                                <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>
-                                  이번 건만 저장
-                                </button>
-                                <button
-                                  onClick={() => openFullSettingEdit(log)}
-                                  style={{ flex: 2, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
-                                >
-                                  전체 설정 변경
-                                </button>
-                                <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-                                  취소
-                                </button>
-                              </div>
+                              {!logEditDraft.showSaveDialog ? (
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                  <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: true }))} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>
+                                    저장
+                                  </button>
+                                  <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                                    취소
+                                  </button>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 700, textAlign: 'center' }}>저장 방식 선택</div>
+                                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                    <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                                      이번 기록만 저장
+                                    </button>
+                                    <button
+                                      onClick={async () => { await saveLogEdit(); openFullSettingEdit(log) }}
+                                      style={{ flex: 1, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
+                                    >
+                                      기본 설정도 변경
+                                    </button>
+                                  </div>
+                                  <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: false }))} style={{ width: '100%', padding: '7px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                                    뒤로
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

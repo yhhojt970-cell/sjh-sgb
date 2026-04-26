@@ -101,6 +101,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const [draftCoins, setDraftCoins] = useState(getTaskCoins(task))
   const [draftStartDate, setDraftStartDate] = useState(task.startDate || task.classStartDate || '')
   const [draftEndDate, setDraftEndDate] = useState(task.endDate || task.classEndDate || '')
+  const [saveCoinDialog, setSaveCoinDialog] = useState(false)
 
   useEffect(() => {
     setDraftName(task.name || '')
@@ -226,7 +227,6 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const saveEdit = () => {
     const safeName = draftName.trim()
     if (!safeName) return
-
     const safeDuration = Math.max(1, Number(draftDuration || 0))
     onUpdateTask(task.id, {
       name: safeName,
@@ -243,6 +243,30 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
       classEndDate: draftEndDate || null
     })
     setIsEditing(false)
+  }
+
+  const saveEditWithLog = (updateTaskCoins) => {
+    const safeName = draftName.trim()
+    if (!safeName) return
+    const safeDuration = Math.max(1, Number(draftDuration || 0))
+    const newCoins = Math.max(0, Number(draftCoins || 0))
+    onUpdateTask(task.id, {
+      name: safeName,
+      startTime: draftStartTime,
+      duration: safeDuration,
+      expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
+      memo: draftMemo.trim(),
+      note: draftMemo.trim(),
+      color: draftColor || task.color || PRIMARY_PINK,
+      coins: updateTaskCoins ? newCoins : taskCoins,
+      startDate: draftStartDate || null,
+      endDate: draftEndDate || null,
+      classStartDate: draftStartDate || null,
+      classEndDate: draftEndDate || null,
+      _doneLogCoinsUpdate: newCoins
+    })
+    setIsEditing(false)
+    setSaveCoinDialog(false)
   }
 
   const style = {
@@ -368,23 +392,49 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
             <input className="input-field" type="time" value={draftStartTime} onChange={(event) => setDraftStartTime(event.target.value)} />
             <input className="input-field" type="number" min="1" value={draftDuration} onChange={(event) => setDraftDuration(Number(event.target.value || 0))} placeholder="분" />
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer' }} />
-            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" />
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '42px', height: '42px', border: '1px solid #ffdbe5', borderRadius: '10px', background: '#fff', padding: '3px', cursor: 'pointer', flexShrink: 0 }} />
+            <span style={{ fontSize: '12px', color: '#555', fontWeight: 700, flexShrink: 0 }}>코인</span>
+            <input className="input-field" type="number" min="0" value={draftCoins} onChange={(event) => setDraftCoins(Number(event.target.value || 0))} placeholder="코인" style={{ width: '70px', flexShrink: 0 }} />
           </div>
           <textarea className="input-field" value={draftMemo} onChange={(event) => setDraftMemo(event.target.value)} placeholder="메모(선택)" style={{ minHeight: '68px', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: '6px' }}>
             <input className="input-field" type="date" value={draftStartDate} onChange={(event) => setDraftStartDate(event.target.value)} placeholder="수업 시작 날짜" />
             <input className="input-field" type="date" value={draftEndDate} onChange={(event) => setDraftEndDate(event.target.value)} placeholder="수업 종료 날짜" />
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); saveEdit() }} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-              <Save size={14} /> 저장
-            </button>
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing(false) }} style={{ flex: 1, border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-              <X size={14} style={{ verticalAlign: 'middle' }} /> 취소
-            </button>
-          </div>
+          {saveCoinDialog ? (
+            <div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 700, textAlign: 'center' }}>코인을 어떻게 저장할까요?</div>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); saveEditWithLog(false) }} className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
+                  이번 기록만 저장
+                </button>
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); saveEditWithLog(true) }} style={{ flex: 1, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}>
+                  기본 설정도 변경
+                </button>
+              </div>
+              <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSaveCoinDialog(false) }} style={{ width: '100%', padding: '7px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
+                뒤로
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                event.stopPropagation()
+                const newCoins = Math.max(0, Number(draftCoins || 0))
+                if (todayLog && newCoins !== taskCoins) {
+                  setSaveCoinDialog(true)
+                } else {
+                  saveEdit()
+                }
+              }} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <Save size={14} /> 저장
+              </button>
+              <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setIsEditing(false) }} style={{ flex: 1, border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
+                <X size={14} style={{ verticalAlign: 'middle' }} /> 취소
+              </button>
+            </div>
+          )}
         </div>
       ) : null}
 
