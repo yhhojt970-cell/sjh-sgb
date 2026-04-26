@@ -1102,6 +1102,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     [doneLogs, todayStr]
   )
 
+  const todayCoins = useMemo(
+    () => dailyActivityLogs.reduce((sum, log) => sum + Number(log.coins || 0), 0),
+    [dailyActivityLogs]
+  )
+
   const dailyGiftLogs = useMemo(
     () => doneLogs.filter((log) => log.date === todayStr && log.type === 'gift'),
     [doneLogs, todayStr]
@@ -1544,10 +1549,16 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     }}
                     title="코인 내역 보기"
                   >
-                    <span style={{ width: isMobile ? '20px' : '22px', height: isMobile ? '20px' : '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ width: isMobile ? '20px' : '22px', height: isMobile ? '20px' : '22px', borderRadius: '50%', background: 'linear-gradient(135deg, #ffcf4a 0%, #ff9f1a 100%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <Coins size={isMobile ? 11 : 12} color="white" />
                     </span>
-                    <strong style={{ color: '#c96d00', fontSize: isMobile ? '12px' : '13px', lineHeight: 1 }}>{availableCoins}</strong>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: isMobile ? '11px' : '12px', lineHeight: 1 }}>
+                      <span style={{ color: '#64748b', fontWeight: 700 }}>오늘</span>
+                      <strong style={{ color: '#c96d00' }}>{todayCoins}</strong>
+                      <span style={{ color: '#cbd5e1' }}>|</span>
+                      <span style={{ color: '#64748b', fontWeight: 700 }}>전체</span>
+                      <strong style={{ color: '#c96d00' }}>{availableCoins}</strong>
+                    </span>
                   </button>
                 </h1>
               </div>
@@ -1718,13 +1729,35 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   }
                 }
 
-                const { _doneLogCoinsUpdate, ...cleanUpdates } = updates
+                const { _doneLogCoinsUpdate, _logOnlyUpdate, ...cleanUpdates } = updates
+
+                const applyDoneLogCoinUpdate = async (extraTasks) => {
+                  if (_doneLogCoinsUpdate === undefined) return
+                  const logId = `${id}-${todayStr}`
+                  const existingLog = doneLogs.find(l => l.id === logId)
+                  if (!existingLog) return
+                  const prevCoins = Number(existingLog.coins || 0)
+                  const newCoinsVal = Number(_doneLogCoinsUpdate)
+                  const coinHistory = prevCoins !== newCoinsVal
+                    ? [...(existingLog.coinHistory || []), { from: prevCoins, to: newCoinsVal, changedAt: format(new Date(), 'yyyy-MM-dd') }]
+                    : (existingLog.coinHistory || [])
+                  const updatedLogs = doneLogs.map(l => l.id === logId ? { ...l, coins: newCoinsVal, coinHistory } : l)
+                  setDoneLogs(updatedLogs)
+                  await persistKidState({ doneLogs: updatedLogs, ...(extraTasks ? { tasks: extraTasks } : {}) })
+                }
+
+                if (_logOnlyUpdate) {
+                  await applyDoneLogCoinUpdate()
+                  return
+                }
+
                 const targetTask = tasks.find((task) => String(task.id) === String(id))
                 if (targetTask?.type === 'class' && isAdmin) {
                   const scopePrompt = prompt('적용 범위 선택 (1: 전체, 2: 오늘부터, 3: 내일부터)', '1')
                   if (scopePrompt === null) return
                   const scope = scopePrompt === '2' ? 'today_onwards' : scopePrompt === '3' ? 'tomorrow_onwards' : 'all'
                   await updateFixedClassTask(activeKidId, id, cleanUpdates, scope)
+                  await applyDoneLogCoinUpdate()
                   return
                 }
 
@@ -1733,22 +1766,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   return { ...task, ...cleanUpdates }
                 })
                 setTasks(next)
-                if (_doneLogCoinsUpdate !== undefined) {
-                  const logId = `${id}-${todayStr}`
-                  const existingLog = doneLogs.find(l => l.id === logId)
-                  if (existingLog) {
-                    const prevCoins = Number(existingLog.coins || 0)
-                    const newCoinsVal = Number(_doneLogCoinsUpdate)
-                    const coinHistory = prevCoins !== newCoinsVal
-                      ? [...(existingLog.coinHistory || []), { from: prevCoins, to: newCoinsVal, changedAt: format(new Date(), 'yyyy-MM-dd') }]
-                      : (existingLog.coinHistory || [])
-                    const updatedLogs = doneLogs.map(l => l.id === logId ? { ...l, coins: newCoinsVal, coinHistory } : l)
-                    setDoneLogs(updatedLogs)
-                    await persistKidState({ doneLogs: updatedLogs, tasks: next })
-                    return
-                  }
-                }
-                persistKidState({ tasks: next })
+                await applyDoneLogCoinUpdate(next)
+                if (_doneLogCoinsUpdate === undefined) persistKidState({ tasks: next })
               }}
               onDeleteTask={(id) => {
                 const next = tasks.filter((t) => String(t.id) !== String(id))

@@ -229,27 +229,6 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
     const safeName = draftName.trim()
     if (!safeName) return
     const safeDuration = Math.max(1, Number(draftDuration || 0))
-    onUpdateTask(task.id, {
-      name: safeName,
-      startTime: draftStartTime,
-      duration: safeDuration,
-      expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
-      memo: draftMemo.trim(),
-      note: draftMemo.trim(),
-      color: draftColor || task.color || PRIMARY_PINK,
-      coins: Math.max(0, Number(draftCoins || 0)),
-      startDate: draftStartDate || null,
-      endDate: draftEndDate || null,
-      classStartDate: draftStartDate || null,
-      classEndDate: draftEndDate || null
-    })
-    setIsEditing(false)
-  }
-
-  const saveEditWithLog = (updateTaskCoins) => {
-    const safeName = draftName.trim()
-    if (!safeName) return
-    const safeDuration = Math.max(1, Number(draftDuration || 0))
     const newCoins = Math.max(0, Number(draftCoins || 0))
     onUpdateTask(task.id, {
       name: safeName,
@@ -259,13 +238,42 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
       memo: draftMemo.trim(),
       note: draftMemo.trim(),
       color: draftColor || task.color || PRIMARY_PINK,
-      coins: updateTaskCoins ? newCoins : taskCoins,
+      coins: newCoins,
       startDate: draftStartDate || null,
       endDate: draftEndDate || null,
       classStartDate: draftStartDate || null,
       classEndDate: draftEndDate || null,
-      _doneLogCoinsUpdate: newCoins
+      ...(todayLog ? { _doneLogCoinsUpdate: newCoins } : {})
     })
+    setIsEditing(false)
+  }
+
+  const saveEditWithLog = (updateTaskCoins) => {
+    const safeName = draftName.trim()
+    if (!safeName) return
+    const safeDuration = Math.max(1, Number(draftDuration || 0))
+    const newCoins = Math.max(0, Number(draftCoins || 0))
+    if (!updateTaskCoins) {
+      // 이번 기록만 저장: doneLog만 갱신, 클래스 태스크 scope 다이얼로그 스킵
+      onUpdateTask(task.id, { _logOnlyUpdate: true, _doneLogCoinsUpdate: newCoins })
+    } else {
+      // 기본 설정도 변경: 템플릿 + doneLog 모두 갱신
+      onUpdateTask(task.id, {
+        name: safeName,
+        startTime: draftStartTime,
+        duration: safeDuration,
+        expectedEndTime: buildExpectedEndTime(draftStartTime, safeDuration),
+        memo: draftMemo.trim(),
+        note: draftMemo.trim(),
+        color: draftColor || task.color || PRIMARY_PINK,
+        coins: newCoins,
+        startDate: draftStartDate || null,
+        endDate: draftEndDate || null,
+        classStartDate: draftStartDate || null,
+        classEndDate: draftEndDate || null,
+        _doneLogCoinsUpdate: newCoins
+      })
+    }
     setIsEditing(false)
     setSaveCoinDialog(false)
   }
