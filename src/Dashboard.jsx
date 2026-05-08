@@ -102,7 +102,7 @@ const normalizeWeekdays = (raw) => {
       return
     }
 
-    ;[...value].forEach((char) => {
+    Array.from(value).forEach((char) => {
       const day = parseWeekday(char)
       if (Number.isInteger(day)) addDay(day)
     })
@@ -191,6 +191,45 @@ const createFixedClassTask = ({ name, weekday, weekdays, startTime, duration, st
   }
 }
 
+function WeekdayPicker({ value = [], onChange }) {
+  const selected = normalizeWeekdays(value)
+
+  const toggleDay = (day) => {
+    const next = selected.includes(day)
+      ? selected.filter((item) => item !== day)
+      : [...selected, day]
+    onChange(normalizeWeekdays(next))
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '4px' }}>
+      {WEEKDAY_LABELS.map((label, day) => {
+        const isSelected = selected.includes(day)
+        return (
+          <button
+            key={label}
+            type="button"
+            onClick={() => toggleDay(day)}
+            style={{
+              height: '34px',
+              border: `1px solid ${isSelected ? PRIMARY_PINK : '#ffd6e0'}`,
+              background: isSelected ? PRIMARY_PINK : 'white',
+              color: isSelected ? 'white' : '#334155',
+              borderRadius: '9px',
+              fontSize: '12px',
+              fontWeight: 900,
+              cursor: 'pointer',
+              padding: 0
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const isCloud = !!cloud?.db && !!cloud?.householdId
   const isAdmin = user?.role === 'admin' || user?.id === '엄마' || user?.loginId === 'yhhojt970'
@@ -255,7 +294,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [bulkInput, setBulkInput] = useState('')
   const [manualClass, setManualClass] = useState({
     kidId: '',
-    weekday: String(getDay(selectedDate)),
+    weekdays: [getDay(selectedDate)],
     name: '',
     startTime: '16:00',
     duration: DEFAULT_DURATION,
@@ -599,9 +638,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         const classEnd = task.endDate || task.classEndDate || ''
         if (classStart && todayStr < classStart) return false
         if (classEnd && todayStr > classEnd) return false
-        if (task.weekday !== undefined && task.weekday !== null && task.weekday !== '') {
-          return Number(task.weekday) === getDay(selectedDate)
-        }
+        const classWeekdays = getTaskWeekdays(task)
+        if (classWeekdays.length > 0) return classWeekdays.includes(getDay(selectedDate))
         if (task.date) return task.date === todayStr
         return true
       }),
@@ -658,8 +696,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       monthCount: monthLogs.length + monthLegacy.length
     }
   }, [doneLogs, tasks, selectedDate])
-
-  const weekdayLabels = ['일', '월', '화', '수', '목', '금', '토']
 
   const allowanceSummary = useMemo(() => {
     const totalIncome = allowanceEntries
@@ -1162,7 +1198,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
 
     if (byKid.size === 0) {
-      alert('붙여넣기 형식을 확인해 주세요: 이름\t요일\t과목명\t시간\t분')
+      alert('붙여넣기 형식을 확인해 주세요: 이름\t요일(예: 월수금 또는 1,3,5)\t과목명\t시간\t분')
       return
     }
 
@@ -1325,12 +1361,25 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
   }
 
+  const buildClassEditInfo = (kidId, task) => ({
+    kidId,
+    task,
+    name: task.name || '',
+    weekdays: getTaskWeekdays(task),
+    startTime: task.startTime || '09:00',
+    duration: String(task.duration || 50),
+    coins: String(getTaskCoins(task)),
+    startDate: task.startDate || task.classStartDate || '',
+    endDate: task.endDate || task.classEndDate || '',
+    memo: task.memo || task.note || ''
+  })
+
   const openFullSettingEdit = (log) => {
     setLogEditDraft(null)
     setShowDailyLog(false)
     if (log.type === 'class') {
       const task = tasks.find(t => String(t.id) === String(log.taskId))
-      if (task) setEditingClassInfo({ ...task, kidId: activeKidId })
+      if (task) setEditingClassInfo(buildClassEditInfo(activeKidId, task))
     } else {
       setShowPalette(true)
     }
@@ -1383,18 +1432,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       <div style={{ display: 'grid', gap: '10px' }}>
         <div style={{ background: '#fff9fb', border: '1px solid #ffe1ea', borderRadius: '18px', padding: '12px' }}>
           <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px', color: PRIMARY_PINK }}>한 건 입력</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+          <div style={{ display: 'grid', gap: '6px', marginBottom: '6px' }}>
             <select className="input-field" value={selectedManualKidId} onChange={(event) => patchManualClass({ kidId: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }}>
               <option value="" disabled>아이 선택</option>
               {kidsList.map((kidId) => (
                 <option key={kidId} value={kidId}>{getFullName(kidId)}</option>
               ))}
             </select>
-            <select className="input-field" value={manualClass.weekday} onChange={(event) => patchManualClass({ weekday: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }}>
-              {weekdayLabels.map((label, index) => (
-                <option key={label} value={String(index)}>{label}요일</option>
-              ))}
-            </select>
+            <WeekdayPicker value={manualClass.weekdays} onChange={(weekdays) => patchManualClass({ weekdays })} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: '6px', marginBottom: '6px' }}>
             <input className="input-field" placeholder="과목명" value={manualClass.name} onChange={(event) => patchManualClass({ name: event.target.value })} style={{ fontSize: '13px', height: '42px', padding: '0 10px' }} />
@@ -1418,7 +1463,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
         {showBulk ? (
         <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '10px' }}>
           <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '6px', color: PRIMARY_PINK }}>엑셀 붙여넣기 등록</div>
-          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>이름[TAB]요일[TAB]과목[TAB]시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)[TAB]코인(선택)</div>
+          <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>이름[TAB]요일(여러 개 가능: 월수금 또는 1,3,5)[TAB]과목[TAB]시간[TAB]분[TAB]시작일(선택)[TAB]종료일(선택)[TAB]메모(선택)[TAB]코인(선택)</div>
           <textarea className="input-field" value={bulkInput} onChange={(event) => { setBulkInput(event.target.value); if (classAddStatus) setClassAddStatus('') }} style={{ minHeight: '80px', fontSize: '11px', marginBottom: '6px' }} placeholder="여기에 엑셀 데이터를 붙여넣으세요" />
           <button className="btn-primary" style={{ width: '100%', height: '36px', fontSize: '13px' }} onClick={handleBulkAdd}>일괄 등록</button>
         </div>
@@ -1434,11 +1479,11 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const safeName = nextName.trim()
     if (!safeName) return null
 
-    const currentWeekday = task.weekday !== undefined && task.weekday !== null ? String(task.weekday) : ''
-    const weekdayRaw = prompt('요일 (0:일 ~ 6:토)', currentWeekday)
+    const currentWeekday = formatWeekdays(task)
+    const weekdayRaw = prompt('요일 (예: 월수금 또는 1,3,5)', currentWeekday)
     if (weekdayRaw === null) return null
-    const parsedWeekday = parseInt(weekdayRaw, 10)
-    const nextWeekday = Number.isNaN(parsedWeekday) ? task.weekday : Math.max(0, Math.min(6, parsedWeekday))
+    const nextWeekdays = normalizeWeekdays(weekdayRaw)
+    if (nextWeekdays.length === 0) return null
 
     const nextStartRaw = prompt('시작 시간', task.startTime || '09:00')
     if (nextStartRaw === null) return null
@@ -1461,7 +1506,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
     return {
       name: safeName,
-      weekday: nextWeekday,
+      weekday: nextWeekdays[0],
+      weekdays: nextWeekdays,
       startTime: nextStart,
       duration: nextDuration,
       expectedEndTime: buildExpectedEndTime(nextStart, nextDuration),
@@ -1507,7 +1553,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
                           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                            <span>{weekdayLabels[Number(task.weekday)] || '-'} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
+                            <span>{formatWeekdays(task)} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
                             <span>·</span>
                             <span style={{ color: PRIMARY_PINK, fontWeight: 800 }}>+{taskCoinsNow}코인</span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -1527,18 +1573,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         </div>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button
-                            onClick={() => setEditingClassInfo({
-                              kidId,
-                              task,
-                              name: task.name || '',
-                              weekday: String(task.weekday ?? '1'),
-                              startTime: task.startTime || '09:00',
-                              duration: String(task.duration || 50),
-                              coins: String(getTaskCoins(task)),
-                              startDate: task.startDate || task.classStartDate || '',
-                              endDate: task.endDate || task.classEndDate || '',
-                              memo: task.memo || task.note || ''
-                            })}
+                            onClick={() => setEditingClassInfo(buildClassEditInfo(kidId, task))}
                             style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
                           >
                             수정
@@ -2331,16 +2366,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <button onClick={() => setEditingClassInfo(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
               </div>
               <div style={{ display: 'grid', gap: '8px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <div style={{ display: 'grid', gap: '6px' }}>
                   <div>
                     <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>수업명</div>
                     <input className="input-field" value={editingClassInfo.name} onChange={(e) => setEditingClassInfo((p) => ({ ...p, name: e.target.value }))} />
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: '#666', marginBottom: '3px' }}>요일</div>
-                    <select className="input-field" value={editingClassInfo.weekday} onChange={(e) => setEditingClassInfo((p) => ({ ...p, weekday: e.target.value }))}>
-                      {weekdayLabels.map((label, idx) => <option key={label} value={String(idx)}>{label}요일</option>)}
-                    </select>
+                    <WeekdayPicker value={editingClassInfo.weekdays} onChange={(weekdays) => setEditingClassInfo((p) => ({ ...p, weekdays }))} />
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -2380,13 +2413,19 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                         onClick={async () => {
                           const safeName = editingClassInfo.name.trim()
                           if (!safeName) return
-                          const parsedWeekday = parseInt(editingClassInfo.weekday, 10)
-                          const normalizedStart = normalizeStartTime(editingClassInfo.startTime) || editingClassInfo.task.startTime
-                          const dur = Math.max(1, parseInt(editingClassInfo.duration, 10) || Number(editingClassInfo.task.duration || 50))
+                          const selectedWeekdays = normalizeWeekdays(editingClassInfo.weekdays)
+                          if (selectedWeekdays.length === 0) {
+                            alert('요일을 하나 이상 선택해 주세요.')
+                            return
+                          }
+                          const sourceTask = editingClassInfo.task || editingClassInfo
+                          const normalizedStart = normalizeStartTime(editingClassInfo.startTime) || sourceTask.startTime
+                          const dur = Math.max(1, parseInt(editingClassInfo.duration, 10) || Number(sourceTask.duration || 50))
                           const coins = Math.max(0, parseInt(editingClassInfo.coins, 10) || 0)
                           const patch = {
                             name: safeName,
-                            weekday: Number.isNaN(parsedWeekday) ? editingClassInfo.task.weekday : parsedWeekday,
+                            weekday: selectedWeekdays[0],
+                            weekdays: selectedWeekdays,
                             startTime: normalizedStart,
                             duration: dur,
                             expectedEndTime: buildExpectedEndTime(normalizedStart, dur),
@@ -2398,7 +2437,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                             memo: editingClassInfo.memo.trim(),
                             note: editingClassInfo.memo.trim()
                           }
-                          await updateFixedClassTask(editingClassInfo.kidId, editingClassInfo.task.id, patch, scope)
+                          await updateFixedClassTask(editingClassInfo.kidId, sourceTask.id, patch, scope)
                           setEditingClassInfo(null)
                         }}
                         className="btn-primary"
