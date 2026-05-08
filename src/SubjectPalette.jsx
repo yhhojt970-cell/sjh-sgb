@@ -13,6 +13,22 @@ const DEFAULT_SUBJECTS = [
 
 const getStorageKey = (kidId) => `kid_app_subjects_${kidId || 'default'}`
 
+const getSubjectCoinValue = (subject, fallback = 1) => {
+  const rawCoins = typeof subject === 'object' ? subject?.coins : subject
+  const normalizedCoins = typeof rawCoins === 'string' ? rawCoins.trim() : rawCoins
+  if (normalizedCoins === undefined || normalizedCoins === null || normalizedCoins === '') return fallback
+  const parsedCoins = Number(normalizedCoins)
+  return Number.isNaN(parsedCoins) ? fallback : Math.max(0, parsedCoins)
+}
+
+const normalizeSubjectList = (subjects) => {
+  const source = Array.isArray(subjects) && subjects.length > 0 ? subjects : DEFAULT_SUBJECTS
+  return source.map((subject) => ({
+    ...subject,
+    coins: getSubjectCoinValue(subject)
+  }))
+}
+
 function PaletteItem({
   subject,
   onSave,
@@ -25,20 +41,20 @@ function PaletteItem({
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `palette-${subject.name}`,
-    data: { type: 'palette', subject: { ...subject, coins: subject.coins ?? 1 } },
+    data: { type: 'palette', subject: { ...subject, coins: getSubjectCoinValue(subject) } },
     disabled: !allowDrag
   })
 
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(subject.name)
   const [draftColor, setDraftColor] = useState(subject.color)
-  const [draftCoins, setDraftCoins] = useState(subject.coins ?? 1)
+  const [draftCoins, setDraftCoins] = useState(getSubjectCoinValue(subject))
   const [coinScopeDialog, setCoinScopeDialog] = useState(null) // { newCoins }
 
   useEffect(() => {
     setDraftName(subject.name)
     setDraftColor(subject.color)
-    setDraftCoins(subject.coins ?? 1)
+    setDraftCoins(getSubjectCoinValue(subject))
   }, [subject.name, subject.color, subject.coins])
 
   const style = {
@@ -56,7 +72,7 @@ function PaletteItem({
   }
 
   const canEditAny = canEditName || canEditColor || canEditCoins
-  const safeCoins = subject.coins !== undefined && subject.coins !== null ? Number(subject.coins) : 1
+  const safeCoins = getSubjectCoinValue(subject)
 
   if (isEditing && canEditAny) {
     return (
@@ -80,7 +96,7 @@ function PaletteItem({
                 ...subject,
                 name: nextName,
                 color: canEditColor ? draftColor : subject.color,
-                coins: subject.coins ?? 1
+                coins: safeCoins
               })
               setIsEditing(false)
             }}
@@ -100,7 +116,7 @@ function PaletteItem({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>{subject.name}</span>
-          <span style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold' }}>+{subject.coins ?? 1}코인</span>
+          <span style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold' }}>+{safeCoins}코인</span>
         </div>
         <span style={{ display: 'flex', gap: '4px' }}>
           {canEditCoins ? (
@@ -210,7 +226,7 @@ export function SubjectPalette({
   const updateKidSubjects = (kidId, nextOrUpdater) => {
     setSubjectsByKid((prev) => {
       const current = prev[kidId] || DEFAULT_SUBJECTS
-      const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater
+      const next = normalizeSubjectList(typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater)
       if (!isCloud) localStorage.setItem(getStorageKey(kidId), JSON.stringify(next))
       return { ...prev, [kidId]: next }
     })
@@ -222,10 +238,10 @@ export function SubjectPalette({
     targetKidIds.forEach((kidId) => {
       try {
         const saved = localStorage.getItem(getStorageKey(kidId))
-        next[kidId] = saved ? JSON.parse(saved) : DEFAULT_SUBJECTS
+        next[kidId] = normalizeSubjectList(saved ? JSON.parse(saved) : DEFAULT_SUBJECTS)
       } catch (error) {
         console.error(error)
-        next[kidId] = DEFAULT_SUBJECTS
+        next[kidId] = normalizeSubjectList(DEFAULT_SUBJECTS)
       }
     })
     setSubjectsByKid(next)
@@ -251,7 +267,7 @@ export function SubjectPalette({
         const legacyData = legacySnap.exists() ? legacySnap.data() : {}
         if (Array.isArray(legacyData?.subjects) && legacyData.subjects.length > 0) next = legacyData.subjects
       }
-      if (!next) next = DEFAULT_SUBJECTS
+      next = normalizeSubjectList(next || DEFAULT_SUBJECTS)
       if (cancelled) return
 
       readyRef.current[kidId] = true
@@ -261,7 +277,7 @@ export function SubjectPalette({
 
       const unsub = onSnapshot(kidRef, (snap) => {
         const data = snap.exists() ? snap.data() : {}
-        const kidSubjects = Array.isArray(data?.subjects) && data.subjects.length > 0 ? data.subjects : (initialRef.current[kidId] || DEFAULT_SUBJECTS)
+        const kidSubjects = normalizeSubjectList(Array.isArray(data?.subjects) && data.subjects.length > 0 ? data.subjects : (initialRef.current[kidId] || DEFAULT_SUBJECTS))
         readyRef.current[kidId] = true
         lastSyncedRef.current[kidId] = JSON.stringify(kidSubjects || [])
         setSubjectsByKid((prev) => ({ ...prev, [kidId]: kidSubjects }))
@@ -337,8 +353,8 @@ export function SubjectPalette({
                   key={`${kidId}-${subject.name}`}
                   subject={subject}
                   onSave={(previousName, nextSubject, scope = 'template') => {
-                    const beforeCoins = Number(subject.coins || 0)
-                    const afterCoins = Number(nextSubject.coins || 0)
+                    const beforeCoins = getSubjectCoinValue(subject)
+                    const afterCoins = getSubjectCoinValue(nextSubject)
                     updateKidSubjects(kidId, (items) => (items || []).map((item) => (item.name === previousName ? nextSubject : item)))
                     if (typeof onCoinChange === 'function' && beforeCoins !== afterCoins) {
                       onCoinChange({ kidId, subjectName: nextSubject.name || previousName, beforeCoins, afterCoins, scope })
@@ -371,7 +387,7 @@ export function SubjectPalette({
                   onClick={() => {
                     const name = (draft.name || '').trim()
                     if (!name) return
-                    updateKidSubjects(kidId, [...(subjectsByKid[kidId] || []), { name, color: draft.color || '#8b5cf6', coins: isAdmin ? (draft.coins ?? 1) : 1 }])
+                    updateKidSubjects(kidId, [...(subjectsByKid[kidId] || []), { name, color: draft.color || '#8b5cf6', coins: isAdmin ? getSubjectCoinValue(draft) : 1 }])
                     patchDraft(kidId, { name: '', coins: 1 })
                   }}
                 >

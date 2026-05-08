@@ -112,8 +112,10 @@ const getCoinTierStyle = (coins, baseColor, isDone, isClassTask) => {
 function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, essentialChecklist = [] }) {
   const getTaskCoins = (targetTask) => {
     if (!targetTask) return 0
-    const hasCoins = targetTask?.coins !== undefined && targetTask?.coins !== null && targetTask?.coins !== ''
-    const parsedCoins = Number(targetTask?.coins)
+    const rawCoins = targetTask?.coins
+    const normalizedCoins = typeof rawCoins === 'string' ? rawCoins.trim() : rawCoins
+    const hasCoins = normalizedCoins !== undefined && normalizedCoins !== null && normalizedCoins !== ''
+    const parsedCoins = Number(normalizedCoins)
     if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
     return targetTask?.type === 'study' ? 1 : 0
   }

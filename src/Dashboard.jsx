@@ -77,9 +77,29 @@ const parseLocalDate = (dateValue) => {
 }
 
 const getSubjectCoins = (subject) => {
-  const parsed = Number(subject?.coins)
+  const rawCoins = subject?.coins
+  const normalizedCoins = typeof rawCoins === 'string' ? rawCoins.trim() : rawCoins
+  if (normalizedCoins === undefined || normalizedCoins === null || normalizedCoins === '') return 1
+  const parsed = Number(normalizedCoins)
   if (Number.isNaN(parsed)) return 1
   return Math.max(0, parsed)
+}
+
+const shouldInsertAfterDropTarget = ({ active, over, oldIndex = -1, targetIndex = -1 }) => {
+  const activeRect = active?.rect?.current?.translated
+  const overRect = over?.rect
+  if (!activeRect || !overRect) {
+    return oldIndex !== -1 && targetIndex !== -1 && oldIndex < targetIndex
+  }
+
+  const activeCenterX = activeRect.left + activeRect.width / 2
+  const activeCenterY = activeRect.top + activeRect.height / 2
+  const overCenterX = overRect.left + overRect.width / 2
+  const overCenterY = overRect.top + overRect.height / 2
+  const deltaX = activeCenterX - overCenterX
+  const deltaY = activeCenterY - overCenterY
+
+  return Math.abs(deltaX) > Math.abs(deltaY) ? deltaX > 0 : deltaY > 0
 }
 
 const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
@@ -535,8 +555,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const getTaskCoins = (task) => {
     if (!task) return 0
-    const hasCoins = task?.coins !== undefined && task?.coins !== null && task?.coins !== ''
-    const parsedCoins = Number(task?.coins)
+    const rawCoins = task?.coins
+    const normalizedCoins = typeof rawCoins === 'string' ? rawCoins.trim() : rawCoins
+    const hasCoins = normalizedCoins !== undefined && normalizedCoins !== null && normalizedCoins !== ''
+    const parsedCoins = Number(normalizedCoins)
     if (hasCoins && !Number.isNaN(parsedCoins)) return parsedCoins
     return task?.type === 'study' ? 1 : 0
   }
@@ -1555,7 +1577,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           const insertIndex = tasks.findIndex((t) => String(t.id) === String(targetTask.id))
           
           if (data?.type === 'palette') {
-            await addTaskFromPalette(targetHour, data.subject, insertIndex)
+            const nextInsertIndex = shouldInsertAfterDropTarget({ active, over, targetIndex: insertIndex })
+              ? insertIndex + 1
+              : insertIndex
+            await addTaskFromPalette(targetHour, data.subject, nextInsertIndex)
           } else if (data?.type === 'task') {
             const activeTask = data.task
             if (String(activeTask.id) === String(targetTask.id)) {
@@ -1569,14 +1594,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               let newIndex = nextTasks.findIndex((t) => String(t.id) === String(targetTask.id))
               if (newIndex === -1) newIndex = nextTasks.length
               
-              let insertAfter = false
-              if (active.rect.current.translated && over.rect) {
-                const activeRect = active.rect.current.translated
-                const overRect = over.rect
-                const activeCenterY = activeRect.top + activeRect.height / 2
-                const overCenterY = overRect.top + overRect.height / 2
-                if (activeCenterY > overCenterY) insertAfter = true
-              }
+              const insertAfter = shouldInsertAfterDropTarget({
+                active,
+                over,
+                oldIndex,
+                targetIndex: insertIndex
+              })
               
               if (insertAfter) newIndex += 1
               
