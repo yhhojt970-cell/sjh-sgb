@@ -18,7 +18,7 @@ const buildExpectedEndTime = (startTime, duration = 50) => {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
-function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
+function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [], dropHint = null }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour-${hour}`, data: { hour } })
   const [activeSlot, setActiveSlot] = useState(false)
   const hourTasks = useMemo(
@@ -74,7 +74,7 @@ function TimeSlot({ hour, tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask,
       <div style={{ flex: 1, minWidth: 0, padding: '10px', boxSizing: 'border-box', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
         {hourTasks.map((task) => (
           <div key={task.id} style={{ flex: isMobile ? '0 0 auto' : '1 1 calc(33.333% - 10px)', width: isMobile ? '100%' : 'auto', minWidth: isMobile ? 0 : '220px', maxWidth: isMobile ? '100%' : 'calc(33.333% - 7px)', boxSizing: 'border-box' }}>
-            <TaskCard task={task} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} essentialChecklist={essentialChecklist} />
+            <TaskCard task={task} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} essentialChecklist={essentialChecklist} dropHint={dropHint} />
           </div>
         ))}
       </div>
@@ -109,7 +109,7 @@ const getCoinTierStyle = (coins, baseColor, isDone, isClassTask) => {
   return { background: bg, borderLeft: bl, boxShadow: sh }
 }
 
-function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, essentialChecklist = [] }) {
+function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, essentialChecklist = [], dropHint = null }) {
   const getTaskCoins = (targetTask) => {
     if (!targetTask) return 0
     const rawCoins = targetTask?.coins
@@ -149,7 +149,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
     disabled: isEditing || isMobile || (task.type === 'class' && !isAdmin)
   })
 
-  const { isOver: isTaskOver, setNodeRef: setDroppableNodeRef } = useDroppable({
+  const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: `droppable-task-${task.id}`,
     data: { type: 'task-drop', task }
   })
@@ -205,6 +205,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   const editRequested = todayLog?.editRequested || false
   const coinAccent = task.color || PRIMARY_PINK
   const coinTier = getCoinTierStyle(displayCoins, coinAccent, isDone, isClassTask)
+  const dropSide = dropHint && String(dropHint.taskId) === String(task.id) ? dropHint.side : null
 
   useEffect(() => {
     if (task.type === 'class' || isDone || !actualStart) return
@@ -353,8 +354,21 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
 
   return (
     <div id={`task-${task.id}`} ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
-      {isTaskOver && (
-        <div style={{ position: 'absolute', top: '-6px', left: '0', right: '0', height: '4px', background: PRIMARY_PINK, borderRadius: '2px', zIndex: 10, boxShadow: `0 0 8px ${PRIMARY_PINK}80` }} />
+      {dropSide && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '8px',
+            bottom: '8px',
+            [dropSide === 'right' ? 'right' : 'left']: '-6px',
+            width: '4px',
+            background: PRIMARY_PINK,
+            borderRadius: '999px',
+            zIndex: 10,
+            boxShadow: `0 0 8px ${PRIMARY_PINK}80`,
+            pointerEvents: 'none'
+          }}
+        />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: isMobile ? '6px' : '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
@@ -615,7 +629,7 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
   )
 }
 
-export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [] }) {
+export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDeleteTask, isAdmin, isMobile, onAddSpecialEvent, essentialChecklist = [], dropHint = null }) {
   const hours = useMemo(() => {
     const taskHours = (tasks || [])
       .map((task) => {
@@ -650,7 +664,7 @@ export default function TimeGrid({ tasks, doneLogs, todayStr, onUpdateTask, onDe
 
       <div style={{ maxHeight: '800px', overflowY: 'auto' }}>
         {hours.map((hour) => (
-          <TimeSlot key={hour} hour={hour} tasks={tasks} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} essentialChecklist={essentialChecklist} />
+          <TimeSlot key={hour} hour={hour} tasks={tasks} doneLogs={doneLogs} todayStr={todayStr} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} isAdmin={isAdmin} isMobile={isMobile} onAddSpecialEvent={onAddSpecialEvent} essentialChecklist={essentialChecklist} dropHint={dropHint} />
         ))}
       </div>
     </div>

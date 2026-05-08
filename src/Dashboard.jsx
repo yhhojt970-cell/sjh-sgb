@@ -85,21 +85,21 @@ const getSubjectCoins = (subject) => {
   return Math.max(0, parsed)
 }
 
-const shouldInsertAfterDropTarget = ({ active, over, oldIndex = -1, targetIndex = -1 }) => {
+const getDropInsertSide = ({ active, over, oldIndex = -1, targetIndex = -1 }) => {
   const activeRect = active?.rect?.current?.translated
   const overRect = over?.rect
   if (!activeRect || !overRect) {
-    return oldIndex !== -1 && targetIndex !== -1 && oldIndex < targetIndex
+    return oldIndex !== -1 && targetIndex !== -1 && oldIndex < targetIndex ? 'right' : 'left'
   }
 
   const activeCenterX = activeRect.left + activeRect.width / 2
-  const activeCenterY = activeRect.top + activeRect.height / 2
   const overCenterX = overRect.left + overRect.width / 2
-  const overCenterY = overRect.top + overRect.height / 2
-  const deltaX = activeCenterX - overCenterX
-  const deltaY = activeCenterY - overCenterY
 
-  return Math.abs(deltaX) > Math.abs(deltaY) ? deltaX > 0 : deltaY > 0
+  return activeCenterX > overCenterX ? 'right' : 'left'
+}
+
+const shouldInsertAfterDropTarget = (args) => {
+  return getDropInsertSide(args) === 'right'
 }
 
 const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
@@ -212,6 +212,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   })
   const [classAddStatus, setClassAddStatus] = useState('')
   const [activeDragItem, setActiveDragItem] = useState(null)
+  const [dropHint, setDropHint] = useState(null)
   const [coinLedgerByKid, setCoinLedgerByKid] = useState({})
   const [allTasksByKid, setAllTasksByKid] = useState({})
   const [fixedSectionOpen, setFixedSectionOpen] = useState(true)
@@ -1543,6 +1544,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     </div>
   )
 
+  const updateTaskDropHint = ({ active, over }) => {
+    const overData = over?.data?.current
+    if (overData?.type !== 'task-drop') {
+      setDropHint(null)
+      return
+    }
+
+    const targetTask = overData.task
+    const activeTask = active?.data?.current?.task
+    if (activeTask && String(activeTask.id) === String(targetTask.id)) {
+      setDropHint(null)
+      return
+    }
+
+    const oldIndex = activeTask ? tasks.findIndex((task) => String(task.id) === String(activeTask.id)) : -1
+    const targetIndex = tasks.findIndex((task) => String(task.id) === String(targetTask.id))
+    const side = getDropInsertSide({ active, over, oldIndex, targetIndex })
+
+    setDropHint((prev) => {
+      if (prev?.taskId === targetTask.id && prev?.side === side) return prev
+      return { taskId: targetTask.id, side }
+    })
+  }
+
   return (
     <DndContext
       sensors={isMobile ? undefined : sensors}
@@ -1557,15 +1582,24 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       }}
       onDragStart={(event) => {
         const data = event.active.data.current
+        setDropHint(null)
         if (data?.type === 'palette') {
           setActiveDragItem({ type: 'palette', subject: data.subject })
           if (isMobile) setShowPalette(false)
         }
       }}
+      onDragMove={(event) => {
+        updateTaskDropHint(event)
+      }}
+      onDragCancel={() => {
+        setActiveDragItem(null)
+        setDropHint(null)
+      }}
       onDragEnd={async (event) => {
         const { over, active } = event
         if (!over) {
           setActiveDragItem(null)
+          setDropHint(null)
           return
         }
         const data = active.data.current
@@ -1649,6 +1683,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           }
         }
         setActiveDragItem(null)
+        setDropHint(null)
       }}
     >
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px' : '20px' }}>
@@ -1821,6 +1856,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               todayStr={todayStr}
               isAdmin={isAdmin}
               isMobile={isMobile}
+              dropHint={dropHint}
               essentialChecklist={essentials}
               onUpdateTask={async (id, updates) => {
                 if (updates.status !== undefined || updates.completed !== undefined || updates.editRequested !== undefined) {
