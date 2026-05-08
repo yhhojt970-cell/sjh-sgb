@@ -141,11 +141,21 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
     setDraftEndDate(task.endDate || task.classEndDate || '')
   }, [task])
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDraggableNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { type: 'task', task },
     disabled: isEditing || isMobile || (task.type === 'class' && !isAdmin)
   })
+
+  const { isOver: isTaskOver, setNodeRef: setDroppableNodeRef } = useDroppable({
+    id: `droppable-task-${task.id}`,
+    data: { type: 'task-drop', task }
+  })
+
+  const setNodeRef = (node) => {
+    setDraggableNodeRef(node)
+    setDroppableNodeRef(node)
+  }
 
   const memo = task.memo || task.note || ''
   const todayLog = useMemo(() => doneLogs.find(l => String(l.taskId) === String(task.id) && l.date === todayStr), [doneLogs, task.id, todayStr])
@@ -341,6 +351,9 @@ function TaskCard({ task, doneLogs = [], todayStr, onUpdateTask, onDeleteTask, i
 
   return (
     <div id={`task-${task.id}`} ref={setNodeRef} style={{ ...style, touchAction: isMobile ? 'auto' : 'manipulation' }} {...(isEditing || isMobile ? {} : attributes)} {...(isEditing || isMobile ? {} : listeners)}>
+      {isTaskOver && (
+        <div style={{ position: 'absolute', top: '-6px', left: '0', right: '0', height: '4px', background: PRIMARY_PINK, borderRadius: '2px', zIndex: 10, boxShadow: `0 0 8px ${PRIMARY_PINK}80` }} />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: isMobile ? '6px' : '10px', gap: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>

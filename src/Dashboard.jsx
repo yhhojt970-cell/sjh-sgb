@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, PointerSensor, pointerWithin, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import {
@@ -1028,7 +1028,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }, [showCoinLedger])
 
-  const addTaskFromPalette = async (hour, subject) => {
+  const addTaskFromPalette = async (hour, subject, insertIndex = -1) => {
     const startTime = `${String(hour).padStart(2, '0')}:00`
     const newTask = {
       id: Math.random().toString(36).slice(2, 11),
@@ -1043,7 +1043,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       date: todayStr,
       coins: getSubjectCoins(subject)
     }
-    const nextTasks = [...tasks, newTask]
+    const nextTasks = [...tasks]
+    if (insertIndex >= 0) {
+      nextTasks.splice(insertIndex, 0, newTask)
+    } else {
+      nextTasks.push(newTask)
+    }
     setTasks(nextTasks)
     await persistKidState({ tasks: nextTasks })
   }
@@ -1519,7 +1524,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   return (
     <DndContext
       sensors={isMobile ? undefined : sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={(args) => {
+        const pointerCollisions = pointerWithin(args)
+        if (pointerCollisions.length > 0) {
+          const taskDrop = pointerCollisions.find(c => c.id.toString().startsWith('droppable-task-'))
+          if (taskDrop) return [taskDrop]
+          return pointerCollisions
+        }
+        return closestCenter(args)
+      }}
       onDragStart={(event) => {
         const data = event.active.data.current
         if (data?.type === 'palette') {
@@ -1534,23 +1547,83 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           return
         }
         const data = active.data.current
-        if (data?.type === 'palette' && over.id.toString().startsWith('hour-')) {
-          await addTaskFromPalette(over.data.current.hour, data.subject)
-        }
-        if (data?.type === 'task' && over.id.toString().startsWith('hour-')) {
-          const nextHour = Number(over.data.current.hour)
-          const next = tasks.map((task) => {
-            if (String(task.id) !== String(active.id)) return task
-            const [, minute = '00'] = String(task.startTime || '00:00').split(':')
-            const nextStartTime = `${String(nextHour).padStart(2, '0')}:${minute}`
-            return {
-              ...task,
-              startTime: nextStartTime,
-              expectedEndTime: buildExpectedEndTime(nextStartTime, task.duration || DEFAULT_DURATION)
+        const overData = over.data.current
+
+        if (overData?.type === 'task-drop') {
+          const targetTask = overData.task
+          const targetHour = parseInt(String(targetTask.startTime || '00:00').split(':')[0], 10)
+          const insertIndex = tasks.findIndex((t) => String(t.id) === String(targetTask.id))
+          
+          if (data?.type === 'palette') {
+            await addTaskFromPalette(targetHour, data.subject, insertIndex)
+          } else if (data?.type === 'task') {
+            const activeTask = data.task
+            if (String(activeTask.id) === String(targetTask.id)) {
+              setActiveDragItem(null)
+              return
             }
-          })
-          setTasks(next)
-          await persistKidState({ tasks: next })
+            const oldIndex = tasks.findIndex((t) => String(t.id) === String(activeTask.id))
+            if (oldIndex !== -1) {
+              const nextTasks = [...tasks]
+              const [removed] = nextTasks.splice(oldIndex, 1)
+              let newIndex = nextTasks.findIndex((t) => String(t.id) === String(targetTask.id))
+              if (newIndex === -1) newIndex = nextTasks.length
+              
+              let insertAfter = false
+              if (active.rect.current.translated && over.rect) {
+                const activeRect = active.rect.current.translated
+                const overRect = over.rect
+                const activeCenterY = activeRect.top + activeRect.height / 2
+                const overCenterY = overRect.top + overRect.height / 2
+                if (activeCenterY > overCenterY) insertAfter = true
+              }
+              
+              if (insertAfter) newIndex += 1
+              
+              const [, minute = '00'] = String(removed.startTime || '00:00').split(':')
+              const nextStartTime = `${String(targetHour).padStart(2, '0')}:${minute}`
+              
+              removed.startTime = nextStartTime
+              removed.expectedEndTime = buildExpectedEndTime(nextStartTime, removed.duration || DEFAULT_DURATION)
+              
+              nextTasks.splice(newIndex, 0, removed)
+              setTasks(nextTasks)
+              await persistKidState({ tasks: nextTasks })
+            }
+          }
+        } else if (over.id.toString().startsWith('hour-')) {
+          if (data?.type === 'palette') {
+            await addTaskFromPalette(over.data.current.hour, data.subject)
+          } else if (data?.type === 'task') {
+            const activeTask = data.task
+            const currentHour = parseInt(String(activeTask.startTime || '00:00').split(':')[0], 10)
+            const nextHour = Number(over.data.current.hour)
+            
+            if (currentHour !== nextHour) {
+              const nextTasks = tasks.filter((t) => String(t.id) !== String(activeTask.id))
+              const [, minute = '00'] = String(activeTask.startTime || '00:00').split(':')
+              const nextStartTime = `${String(nextHour).padStart(2, '0')}:${minute}`
+              
+              const movedTask = {
+                ...activeTask,
+                startTime: nextStartTime,
+                expectedEndTime: buildExpectedEndTime(nextStartTime, activeTask.duration || DEFAULT_DURATION)
+              }
+              nextTasks.push(movedTask)
+              setTasks(nextTasks)
+              await persistKidState({ tasks: nextTasks })
+            } else {
+              // Same hour, dropped on empty space (not a specific task) -> move to end
+              const oldIndex = tasks.findIndex((t) => String(t.id) === String(activeTask.id))
+              if (oldIndex !== -1) {
+                const nextTasks = [...tasks]
+                const [removed] = nextTasks.splice(oldIndex, 1)
+                nextTasks.push(removed) // Append to end of tasks
+                setTasks(nextTasks)
+                await persistKidState({ tasks: nextTasks })
+              }
+            }
+          }
         }
         setActiveDragItem(null)
       }}

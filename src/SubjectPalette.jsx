@@ -56,7 +56,7 @@ function PaletteItem({
   }
 
   const canEditAny = canEditName || canEditColor || canEditCoins
-  const safeCoins = Number(subject.coins || 0)
+  const safeCoins = subject.coins !== undefined && subject.coins !== null ? Number(subject.coins) : 1
 
   if (isEditing && canEditAny) {
     return (
