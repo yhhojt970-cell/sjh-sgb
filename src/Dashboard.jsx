@@ -123,6 +123,22 @@ const formatWeekdays = (taskOrWeekdays) => {
   return weekdays.map((day) => WEEKDAY_LABELS[day]).join('·')
 }
 
+const getClassSortWeekday = (task) => {
+  const weekdays = getTaskWeekdays(task)
+  if (weekdays.length === 0) return 8
+  return weekdays[0]
+}
+
+const compareFixedClasses = (a, b) => {
+  const weekdayCompare = getClassSortWeekday(a) - getClassSortWeekday(b)
+  if (weekdayCompare !== 0) return weekdayCompare
+
+  const timeCompare = String(a.startTime || '').localeCompare(String(b.startTime || ''), 'ko-KR', { numeric: true })
+  if (timeCompare !== 0) return timeCompare
+
+  return String(a.name || '').localeCompare(String(b.name || ''), 'ko-KR', { numeric: true })
+}
+
 const parseLocalDate = (dateValue) => {
   const match = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!match) return new Date()
@@ -310,6 +326,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [allTasksByKid, setAllTasksByKid] = useState({})
   const [fixedSectionOpen, setFixedSectionOpen] = useState(true)
   const [fixedOpenByKid, setFixedOpenByKid] = useState({})
+  const [fixedClassSearch, setFixedClassSearch] = useState('')
   const [editingClassInfo, setEditingClassInfo] = useState(null)
 
   const kidsList = useMemo(
@@ -1238,7 +1255,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     Object.entries(source || {}).forEach(([kidId, list]) => {
       next[kidId] = (list || [])
         .filter((task) => task?.type === 'class')
-        .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+        .sort(compareFixedClasses)
     })
     return next
   }, [isAdmin, allTasksByKid, activeKidId, tasks])
@@ -1521,117 +1538,147 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
   }
 
-  const renderFixedClassListPanel = () => (
-    <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '14px' }}>
-      <button
-        onClick={() => setFixedSectionOpen((prev) => !prev)}
-        style={{ width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '12px', padding: '10px 12px', fontWeight: 900, cursor: 'pointer', textAlign: 'left' }}
-      >
-        {fixedSectionOpen ? '▼' : '▶'} 아이별 고정수업 목록
-      </button>
-      {fixedSectionOpen ? (
-        <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
-          {kidsList.map((kidId) => {
-            const isOpen = fixedOpenByKid[kidId] !== false
-            const classItems = fixedClassesByKid[kidId] || []
-            return (
-              <div key={`fixed-${kidId}`} style={{ border: '1px solid #ffe1ea', borderRadius: '12px', padding: '8px' }}>
-                <button
-                  onClick={() => setFixedOpenByKid((prev) => ({ ...prev, [kidId]: !isOpen }))}
-                  style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 900, color: '#ff4d6d', cursor: 'pointer', padding: '4px 2px' }}
-                >
-                  {isOpen ? '▼' : '▶'} {getFullName(kidId)} ({classItems.length})
-                </button>
-                {isOpen ? (
-                  <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
-                    {classItems.map((task) => {
-                      const taskCoinsNow = getTaskCoins(task)
-                      const isCoinDialogOpen = fixedClassCoinDialog?.taskId === task.id && fixedClassCoinDialog?.kidId === kidId
-                      return (
-                      <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
-                        <div style={{ padding: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                            <span>{formatWeekdays(task)} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
-                            <span>·</span>
-                            <span style={{ color: PRIMARY_PINK, fontWeight: 800 }}>+{taskCoinsNow}코인</span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-                              <button
-                                onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: Math.max(0, taskCoinsNow - 1), currentCoins: taskCoinsNow })}
-                                style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: '#666', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
-                              >-</button>
-                              <button
-                                onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: taskCoinsNow + 1, currentCoins: taskCoinsNow })}
-                                style={{ border: 'none', background: '#ff4d6d20', color: '#ff4d6d', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
-                              >+</button>
-                            </span>
-                            {(task.startDate || task.classStartDate || task.endDate || task.classEndDate) ? (
-                              <span style={{ color: '#94a3b8' }}>({task.startDate || task.classStartDate || '시작 제한 없음'} ~ {task.endDate || task.classEndDate || '종료 제한 없음'})</span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button
-                            onClick={() => setEditingClassInfo(buildClassEditInfo(kidId, task))}
-                            style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            수정
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!window.confirm('이 고정수업을 삭제할까요?')) return
-                              await deleteFixedClassTask(kidId, task.id)
-                            }}
-                            style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            삭제
-                          </button>
-                        </div>
-                        </div>
-                        {isCoinDialogOpen && (
-                          <div style={{ padding: '10px 12px', borderTop: '1px solid #ffe1ea', background: '#fff7fa' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 900, color: '#333', marginBottom: '8px' }}>
-                              {fixedClassCoinDialog.currentCoins} → {fixedClassCoinDialog.newCoins}코인 · 어디에 적용할까요?
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                              {[
-                                { label: '전체', scope: 'all' },
-                                { label: '오늘부터', scope: 'today_onwards' },
-                                { label: '내일부터', scope: 'tomorrow_onwards' },
-                              ].map(({ label, scope }) => (
+  const renderFixedClassListPanel = () => {
+    const searchQuery = fixedClassSearch.trim().toLowerCase()
+    const matchesFixedClassSearch = (kidId, task) => {
+      if (!searchQuery) return true
+      const searchableText = [
+        getFullName(kidId),
+        task.name,
+        formatWeekdays(task),
+        task.startTime,
+        task.expectedEndTime,
+        task.memo,
+        task.note
+      ].join(' ').toLowerCase()
+      return searchableText.includes(searchQuery)
+    }
+
+    return (
+      <div style={{ borderTop: '1px solid #ffe1ea', paddingTop: '14px' }}>
+        <button
+          onClick={() => setFixedSectionOpen((prev) => !prev)}
+          style={{ width: '100%', border: '1px solid #ffd6e0', background: '#fff7fa', color: '#d6336c', borderRadius: '12px', padding: '10px 12px', fontWeight: 900, cursor: 'pointer', textAlign: 'left' }}
+        >
+          {fixedSectionOpen ? '▼' : '▶'} 아이별 고정수업 목록
+        </button>
+        {fixedSectionOpen ? (
+          <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
+            <div style={{ display: 'grid', gap: '5px' }}>
+              <input
+                className="input-field"
+                value={fixedClassSearch}
+                onChange={(event) => setFixedClassSearch(event.target.value)}
+                placeholder="수업명, 요일, 시간 검색"
+                style={{ height: '38px', fontSize: '12px', padding: '0 10px' }}
+              />
+              <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800 }}>정렬: 요일 → 시작시간 → 수업명</div>
+            </div>
+            {kidsList.map((kidId) => {
+              const isOpen = fixedOpenByKid[kidId] !== false
+              const classItems = fixedClassesByKid[kidId] || []
+              const visibleClassItems = classItems.filter((task) => matchesFixedClassSearch(kidId, task))
+              const countLabel = searchQuery ? `${visibleClassItems.length}/${classItems.length}` : classItems.length
+              return (
+                <div key={`fixed-${kidId}`} style={{ border: '1px solid #ffe1ea', borderRadius: '12px', padding: '8px' }}>
+                  <button
+                    onClick={() => setFixedOpenByKid((prev) => ({ ...prev, [kidId]: !isOpen }))}
+                    style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontWeight: 900, color: '#ff4d6d', cursor: 'pointer', padding: '4px 2px' }}
+                  >
+                    {isOpen ? '▼' : '▶'} {getFullName(kidId)} ({countLabel})
+                  </button>
+                  {isOpen ? (
+                    <div style={{ marginTop: '6px', display: 'grid', gap: '6px' }}>
+                      {visibleClassItems.map((task) => {
+                        const taskCoinsNow = getTaskCoins(task)
+                        const isCoinDialogOpen = fixedClassCoinDialog?.taskId === task.id && fixedClassCoinDialog?.kidId === kidId
+                        return (
+                        <div key={`${kidId}-${task.id}`} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
+                          <div style={{ padding: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '12px', fontWeight: 900, color: '#334155' }}>{task.name}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                              <span>{formatWeekdays(task)} / {task.startTime} ~ {task.expectedEndTime} ({task.duration}분)</span>
+                              <span>·</span>
+                              <span style={{ color: PRIMARY_PINK, fontWeight: 800 }}>+{taskCoinsNow}코인</span>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                                 <button
-                                  key={scope}
-                                  onClick={async () => {
-                                    await updateFixedClassTask(kidId, task.id, { coins: fixedClassCoinDialog.newCoins }, scope)
-                                    setFixedClassCoinDialog(null)
-                                  }}
-                                  style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #ffd6e0', background: 'white', color: '#333', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                              <button
-                                onClick={() => setFixedClassCoinDialog(null)}
-                                style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#666', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-                              >
-                                취소
-                              </button>
+                                  onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: Math.max(0, taskCoinsNow - 1), currentCoins: taskCoinsNow })}
+                                  style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: '#666', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+                                >-</button>
+                                <button
+                                  onClick={() => setFixedClassCoinDialog({ taskId: task.id, kidId, newCoins: taskCoinsNow + 1, currentCoins: taskCoinsNow })}
+                                  style={{ border: 'none', background: '#ff4d6d20', color: '#ff4d6d', borderRadius: '5px', padding: '1px 6px', fontWeight: 900, cursor: 'pointer', fontSize: '12px' }}
+                                >+</button>
+                              </span>
+                              {(task.startDate || task.classStartDate || task.endDate || task.classEndDate) ? (
+                                <span style={{ color: '#94a3b8' }}>({task.startDate || task.classStartDate || '시작 제한 없음'} ~ {task.endDate || task.classEndDate || '종료 제한 없음'})</span>
+                              ) : null}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )})}
-                    {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
-    </div>
-  )
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              onClick={() => setEditingClassInfo(buildClassEditInfo(kidId, task))}
+                              style={{ border: '1px solid #dbeafe', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                            >
+                              수정
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm('이 고정수업을 삭제할까요?')) return
+                                await deleteFixedClassTask(kidId, task.id)
+                              }}
+                              style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: '8px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer' }}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                          </div>
+                          {isCoinDialogOpen && (
+                            <div style={{ padding: '10px 12px', borderTop: '1px solid #ffe1ea', background: '#fff7fa' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 900, color: '#333', marginBottom: '8px' }}>
+                                {fixedClassCoinDialog.currentCoins} → {fixedClassCoinDialog.newCoins}코인 · 어디에 적용할까요?
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                {[
+                                  { label: '전체', scope: 'all' },
+                                  { label: '오늘부터', scope: 'today_onwards' },
+                                  { label: '내일부터', scope: 'tomorrow_onwards' },
+                                ].map(({ label, scope }) => (
+                                  <button
+                                    key={scope}
+                                    onClick={async () => {
+                                      await updateFixedClassTask(kidId, task.id, { coins: fixedClassCoinDialog.newCoins }, scope)
+                                      setFixedClassCoinDialog(null)
+                                    }}
+                                    style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #ffd6e0', background: 'white', color: '#333', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => setFixedClassCoinDialog(null)}
+                                  style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#666', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )})}
+                      {classItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>등록된 고정수업이 없어요.</div> : null}
+                      {classItems.length > 0 && visibleClassItems.length === 0 ? <div style={{ fontSize: '11px', color: '#94a3b8' }}>검색 결과가 없어요.</div> : null}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   const updateTaskDropHint = ({ active, over }) => {
     const overData = over?.data?.current
