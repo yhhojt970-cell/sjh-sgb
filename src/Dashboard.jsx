@@ -30,6 +30,7 @@ import { auth } from './firebase'
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
 const DEFAULT_DURATION = 50
+const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
 const CLASS_STATUSES = [
   { value: 'completed', label: '완료', bg: '#42c99b' },
@@ -70,6 +71,58 @@ const parseWeekday = (raw) => {
   return map[value]
 }
 
+const normalizeWeekdays = (raw) => {
+  const source = Array.isArray(raw) ? raw : [raw]
+  const days = []
+  const addDay = (value) => {
+    if (Number.isInteger(value) && value >= 0 && value <= 6 && !days.includes(value)) {
+      days.push(value)
+    }
+  }
+
+  source.forEach((entry) => {
+    if (entry === undefined || entry === null || entry === '') return
+    if (typeof entry === 'number') {
+      addDay(entry)
+      return
+    }
+
+    const value = String(entry).trim()
+    if (!value) return
+
+    const direct = parseWeekday(value)
+    if (Number.isInteger(direct)) {
+      addDay(direct)
+      return
+    }
+
+    const tokens = value.split(/[,\s/|·]+/).filter(Boolean)
+    if (tokens.length > 1) {
+      tokens.forEach((token) => normalizeWeekdays(token).forEach(addDay))
+      return
+    }
+
+    ;[...value].forEach((char) => {
+      const day = parseWeekday(char)
+      if (Number.isInteger(day)) addDay(day)
+    })
+  })
+
+  return days.sort((a, b) => a - b)
+}
+
+const getTaskWeekdays = (task) => {
+  const normalized = normalizeWeekdays(task?.weekdays)
+  if (normalized.length > 0) return normalized
+  return normalizeWeekdays(task?.weekday)
+}
+
+const formatWeekdays = (taskOrWeekdays) => {
+  const weekdays = Array.isArray(taskOrWeekdays) ? normalizeWeekdays(taskOrWeekdays) : getTaskWeekdays(taskOrWeekdays)
+  if (weekdays.length === 0) return '-'
+  return weekdays.map((day) => WEEKDAY_LABELS[day]).join('·')
+}
+
 const parseLocalDate = (dateValue) => {
   const match = String(dateValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!match) return new Date()
@@ -102,8 +155,8 @@ const shouldInsertAfterDropTarget = (args) => {
   return getDropInsertSide(args) === 'right'
 }
 
-const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
-  const parsedWeekday = Number(typeof weekday === 'number' ? weekday : parseWeekday(weekday))
+const createFixedClassTask = ({ name, weekday, weekdays, startTime, duration, startDate = '', endDate = '', memo = '', coins = 0 }) => {
+  const parsedWeekdays = normalizeWeekdays(weekdays !== undefined ? weekdays : weekday)
   const parsedDuration = parseInt(duration, 10)
   const parsedCoins = Number(coins)
   const normalizedStartTime = normalizeStartTime(startTime)
@@ -112,7 +165,7 @@ const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = 
   const trimmedStartDate = String(startDate || '').trim()
   const trimmedEndDate = String(endDate || '').trim()
 
-  if (!trimmedName || !Number.isInteger(parsedWeekday) || parsedWeekday < 0 || parsedWeekday > 6 || !normalizedStartTime || Number.isNaN(parsedDuration) || parsedDuration <= 0) {
+  if (!trimmedName || parsedWeekdays.length === 0 || !normalizedStartTime || Number.isNaN(parsedDuration) || parsedDuration <= 0) {
     return null
   }
 
@@ -126,7 +179,8 @@ const createFixedClassTask = ({ name, weekday, startTime, duration, startDate = 
     type: 'class',
     icon: 'Book',
     completed: false,
-    weekday: parsedWeekday,
+    weekday: parsedWeekdays[0],
+    weekdays: parsedWeekdays,
     memo: trimmedMemo,
     note: trimmedMemo,
     startDate: trimmedStartDate || null,
