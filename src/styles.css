@@ -1,10 +1,27 @@
 /* SJH-SGB SCHEDULE ORIGINAL STYLES */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple Color Emoji', 'Segoe UI Emoji', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   color: #333;
   background: #fff9fb;
+  touch-action: pan-y pinch-zoom;
 }
 
 .header-btn-original {
@@ -61,11 +78,14 @@ body {
 
 .input-field {
   width: 100%;
+  max-width: 100%;
   padding: 12px 15px;
   border: 1px solid #ffdeeb;
   border-radius: 12px;
   font-size: 14px;
   box-sizing: border-box;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
 }
 
 .input-field:focus {
