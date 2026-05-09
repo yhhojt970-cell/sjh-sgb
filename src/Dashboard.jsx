@@ -3,6 +3,7 @@ import { DndContext, PointerSensor, pointerWithin, closestCenter, useSensor, use
 import { SubjectPalette } from './SubjectPalette'
 import TimeGrid from './TimeGrid'
 import {
+  Bell,
   Calendar,
   Check,
   ChevronLeft,
@@ -26,6 +27,7 @@ import { ko } from 'date-fns/locale'
 import { updatePassword } from 'firebase/auth'
 import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { auth } from './firebase'
+import { getPushNotificationStatus, listenForForegroundPush, registerPushDevice, showForegroundPushNotification } from './notifications'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -269,6 +271,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [doneLogs, setDoneLogs] = useState([])
 
   const [showSettings, setShowSettings] = useState(false)
+  const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', hasVapidKey: false, tokenHash: '' })
+  const [pushBusy, setPushBusy] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
   const [showAppLauncher, setShowAppLauncher] = useState(false)
   const [showAllowanceBook, setShowAllowanceBook] = useState(false)
@@ -343,11 +347,51 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     return matched || ''
   }, [isAdmin, user?.loginId, user?.id, kidsList, allUsers])
 
+  const refreshPushStatus = async () => {
+    const status = await getPushNotificationStatus(cloud?.householdId || '')
+    setPushStatus(status)
+  }
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  useEffect(() => {
+    let alive = true
+    getPushNotificationStatus(cloud?.householdId || '')
+      .then((status) => {
+        if (alive) setPushStatus(status)
+      })
+      .catch(console.error)
+    return () => {
+      alive = false
+    }
+  }, [cloud?.householdId, showSettings])
+
+  useEffect(() => {
+    if (!isCloud) return undefined
+    let cancelled = false
+    let unsubscribe = () => {}
+
+    listenForForegroundPush((payload) => {
+      showForegroundPushNotification(payload)
+    })
+      .then((nextUnsubscribe) => {
+        if (cancelled && typeof nextUnsubscribe === 'function') {
+          nextUnsubscribe()
+          return
+        }
+        unsubscribe = typeof nextUnsubscribe === 'function' ? nextUnsubscribe : () => {}
+      })
+      .catch(console.error)
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [isCloud, pushStatus.permission, pushStatus.tokenHash])
 
   useEffect(() => {
     if (isAdmin) {
@@ -980,6 +1024,27 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     } catch (error) {
       console.error(error)
       alert('비밀번호 변경에 실패했어요. 다시 로그인 후 시도해 주세요.')
+    }
+  }
+
+  const handleEnablePushNotifications = async () => {
+    setPushBusy(true)
+    try {
+      const result = await registerPushDevice({
+        db: cloud?.db,
+        householdId: cloud?.householdId,
+        user,
+        activeKidId,
+        displayName: getFullName(activeKidId || user?.loginId || user?.id || '')
+      })
+      await refreshPushStatus()
+      alert(result.ok ? '이 기기에서 알림을 받을 수 있어요.' : result.message)
+    } catch (error) {
+      console.error(error)
+      await refreshPushStatus()
+      alert('알림 등록에 실패했어요. Firebase Web Push 설정을 확인해 주세요.')
+    } finally {
+      setPushBusy(false)
     }
   }
 
@@ -1703,6 +1768,15 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       return { taskId: targetTask.id, side }
     })
   }
+
+  const pushEnabled = pushStatus.permission === 'granted' && Boolean(pushStatus.tokenHash)
+  const pushStatusText = !pushStatus.supported
+    ? '지원 안 됨'
+    : pushEnabled
+      ? '켜짐'
+      : pushStatus.permission === 'denied'
+        ? '차단됨'
+        : '꺼짐'
 
   return (
     <DndContext
@@ -3055,6 +3129,42 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ fontWeight: 900, color: PRIMARY_PINK }}>설정</h2>
                 <button onClick={() => setShowSettings(false)} style={{ border: 'none', background: 'none' }}><CloseIcon /></button>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 900 }}>
+                    <Bell size={16} color={PRIMARY_PINK} />
+                    푸시 알림
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 900, color: pushEnabled ? '#16a34a' : '#94a3b8' }}>{pushStatusText}</span>
+                </div>
+                <button
+                  onClick={handleEnablePushNotifications}
+                  disabled={pushBusy || !pushStatus.supported || pushStatus.permission === 'denied'}
+                  className="btn-primary"
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    opacity: pushBusy || !pushStatus.supported || pushStatus.permission === 'denied' ? 0.55 : 1,
+                    cursor: pushBusy || !pushStatus.supported || pushStatus.permission === 'denied' ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <Bell size={16} />
+                  {pushBusy ? '등록 중...' : pushEnabled ? '이 기기 다시 등록' : '이 기기에서 알림 받기'}
+                </button>
+                {!pushStatus.hasVapidKey ? (
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#c96d00', lineHeight: 1.5, fontWeight: 700 }}>
+                    Firebase Web Push 키가 아직 설정되지 않았어요.
+                  </div>
+                ) : null}
+                {pushStatus.permission === 'denied' ? (
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#dc2626', lineHeight: 1.5, fontWeight: 700 }}>
+                    브라우저 알림 권한이 차단되어 있어요.
+                  </div>
+                ) : null}
               </div>
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>비밀번호 변경</div>

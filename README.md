@@ -39,5 +39,14 @@ npm run dev
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_VAPID_KEY`
 
 4) `Deploy to GitHub Pages` 워크플로우가 실행되면 배포 URL이 생깁니다.
+
+## 푸시 알림
+
+앱을 닫아도 가족 메시지 알림을 받으려면 Firebase Cloud Messaging Web Push certificate public key를 `VITE_FIREBASE_VAPID_KEY`로 추가하고 Cloud Functions를 배포하세요.
+
+```bash
+firebase deploy --only functions,firestore:rules
+```

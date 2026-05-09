@@ -53,7 +53,7 @@ git remote -v
 ## 8. Firebase 관련 확인
 
 - GitHub `Settings` → `Secrets and variables` → `Actions`
-- 아래 6개가 있어야 함
+- 아래 7개가 있어야 함
 
 ```txt
 VITE_FIREBASE_API_KEY
@@ -62,6 +62,7 @@ VITE_FIREBASE_PROJECT_ID
 VITE_FIREBASE_STORAGE_BUCKET
 VITE_FIREBASE_MESSAGING_SENDER_ID
 VITE_FIREBASE_APP_ID
+VITE_FIREBASE_VAPID_KEY
 ```
 
 ## 9. 계정 아이디
@@ -81,3 +82,17 @@ VITE_FIREBASE_APP_ID
 
 ## 11. 사용량측정
 npx claude-token-meter
+
+## 12. 푸시 알림 배포
+
+Firebase Console → Project settings → Cloud Messaging → Web Push certificates에서 public key를 만들고 GitHub Actions 변수에 추가하세요.
+
+```txt
+VITE_FIREBASE_VAPID_KEY
+```
+
+Cloud Functions까지 배포해야 앱을 닫아도 가족 메시지 알림이 도착합니다.
+
+```powershell
+firebase deploy --only functions,firestore:rules
+```
