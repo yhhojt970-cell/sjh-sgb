@@ -11,6 +11,7 @@ import {
   Coins,
   Edit3,
   Gift,
+  KeyRound,
   LayoutGrid,
   LogOut,
   PiggyBank,
@@ -25,8 +26,9 @@ import {
 import { addDays, endOfMonth, endOfWeek, format, getDay, isSameMonth, isSameDay, startOfMonth, startOfWeek, subDays } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { updatePassword } from 'firebase/auth'
-import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
-import { auth } from './firebase'
+import { httpsCallable } from 'firebase/functions'
+import { arrayUnion, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore'
+import { auth, functions } from './firebase'
 import { getPushNotificationStatus, listenForForegroundPush, registerPushDevice, showForegroundPushNotification, getNotificationSettings, saveNotificationSettings } from './notifications'
 
 const PRIMARY_PINK = '#ff4d6d'
@@ -260,6 +262,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const [tasks, setTasks] = useState([])
   const [messages, setMessages] = useState([])
+  const [passwordResetRequests, setPasswordResetRequests] = useState([])
   const [coinLogs, setCoinLogs] = useState([])
   const [studyApps, setStudyApps] = useState([])
   const [essentials, setEssentials] = useState([])
@@ -309,6 +312,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [replyText, setReplyText] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [resetCodeBusyId, setResetCodeBusyId] = useState('')
   const [notificationSettings, setNotificationSettings] = useState({
     taskCreated: true,
     taskUpdated: true,
@@ -584,6 +588,33 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       unsubSharedRewards()
     }
   }, [isCloud, cloud?.db, cloud?.householdId])
+
+  useEffect(() => {
+    if (!isAdmin || !isCloud) {
+      setPasswordResetRequests([])
+      return undefined
+    }
+
+    const requestsQuery = query(
+      collection(cloud.db, 'passwordResetRequests'),
+      where('householdId', '==', cloud.householdId)
+    )
+    const unsubscribe = onSnapshot(
+      requestsQuery,
+      (snap) => {
+        const next = snap.docs
+          .map((requestDoc) => ({ id: requestDoc.id, ...requestDoc.data() }))
+          .sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() || 0
+            const bTime = b.createdAt?.toMillis?.() || 0
+            return bTime - aTime
+          })
+        setPasswordResetRequests(next)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [isAdmin, isCloud, cloud?.db, cloud?.householdId])
 
   useEffect(() => {
     if (!dataLoaded) return
@@ -942,6 +973,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     () => messages.filter((message) => message.reply && !message.replyReadByAdmin).length,
     [messages]
   )
+  const pendingPasswordResetRequests = useMemo(
+    () => passwordResetRequests.filter((request) => request.status === 'open' || request.status === 'approved'),
+    [passwordResetRequests]
+  )
 
   const coinChangeLogsForView = useMemo(() => {
     const info = allUsers[activeKidId] || {}
@@ -950,6 +985,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   }, [coinLogs, activeKidId, allUsers])
 
   const getFullName = (id) => allUsers[id]?.displayName || allUsers[id]?.name || id
+
+  const formatResetRequestTime = (request) => {
+    const date = request?.createdAt?.toDate?.()
+    if (!date || Number.isNaN(date.getTime())) return '방금 전'
+    return format(date, 'MM월 d일 HH:mm')
+  }
 
   const buildCoinEntries = (logList = [], taskList = []) => {
     const seenIds = new Set()
@@ -1180,6 +1221,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     } catch (error) {
       console.error(error)
       alert('비밀번호 변경에 실패했어요. 다시 로그인 후 시도해 주세요.')
+    }
+  }
+
+  const handleApprovePasswordReset = async (request) => {
+    if (!isAdmin || !request?.kidLoginId) return
+
+    const kidName = request.kidName || getFullName(request.kidLoginId)
+    const ok = window.confirm(`${kidName} 비밀번호 초기화를 허용하고 6자리 코드를 만들까요?`)
+    if (!ok) return
+
+    setResetCodeBusyId(request.id)
+    try {
+      const approveChildPasswordReset = httpsCallable(functions, 'approveChildPasswordReset')
+      const result = await approveChildPasswordReset({
+        householdId: cloud.householdId,
+        kidLoginId: request.kidLoginId,
+        requestId: request.id
+      })
+      alert(`${kidName}에게 알려줄 코드는 ${result.data?.resetCode || '화면에 표시된 코드'}입니다.`)
+    } catch (error) {
+      console.error(error)
+      alert('초기화 코드를 만들지 못했어요. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setResetCodeBusyId('')
     }
   }
 
@@ -2257,7 +2322,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 <PiggyBank size={isMobile ? 18 : 22} />
               </button>
               <button onClick={() => setShowGoals(true)} className="header-btn-original"><Trophy size={isMobile ? 18 : 22} /></button>
-              <button onClick={() => setShowSettings(true)} className="header-btn-original"><Settings size={isMobile ? 18 : 22} /></button>
+              <button onClick={() => setShowSettings(true)} className="header-btn-original" style={{ position: 'relative' }} title="설정">
+                <Settings size={isMobile ? 18 : 22} />
+                {isAdmin && pendingPasswordResetRequests.length > 0 ? (
+                  <span style={{ position: 'absolute', top: '-6px', right: '-6px', minWidth: '18px', height: '18px', borderRadius: '999px', background: PRIMARY_PINK, color: 'white', fontSize: '10px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                    {pendingPasswordResetRequests.length > 9 ? '9+' : pendingPasswordResetRequests.length}
+                  </span>
+                ) : null}
+              </button>
               <button onClick={onLogout} className="header-btn-original" style={{ color: PRIMARY_PINK }}><LogOut size={isMobile ? 18 : 22} /></button>
             </div>
           </div>
@@ -3640,6 +3712,60 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   ))}
                 </div>
               </div>
+
+              {isAdmin ? (
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <KeyRound size={16} color={PRIMARY_PINK} />
+                    아이 비밀번호 초기화 요청
+                    {pendingPasswordResetRequests.length > 0 ? (
+                      <span style={{ marginLeft: 'auto', background: PRIMARY_PINK, color: 'white', borderRadius: '999px', padding: '3px 8px', fontSize: '11px', fontWeight: 900 }}>
+                        {pendingPasswordResetRequests.length}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {pendingPasswordResetRequests.length === 0 ? (
+                    <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '12px', fontSize: '12px', color: '#64748b', fontWeight: 700 }}>
+                      아직 들어온 요청이 없어요.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                      {pendingPasswordResetRequests.map((request) => {
+                        const busy = resetCodeBusyId === request.id
+                        const approved = request.status === 'approved'
+                        return (
+                          <div key={request.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'flex-start', marginBottom: '10px' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: 900, color: '#1f2937' }}>{request.kidName || getFullName(request.kidLoginId)}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', fontWeight: 700 }}>{formatResetRequestTime(request)} 요청</div>
+                              </div>
+                              <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 900, color: approved ? '#15803d' : '#d6336c', background: approved ? '#f0fdf4' : '#fff0f3', borderRadius: '999px', padding: '4px 8px' }}>
+                                {approved ? '코드 발급됨' : '승인 필요'}
+                              </span>
+                            </div>
+                            {approved && request.resetCode ? (
+                              <div style={{ textAlign: 'center', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '12px', padding: '12px', marginBottom: '8px' }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 800, marginBottom: '5px' }}>아이에게 알려줄 코드</div>
+                                <div style={{ fontSize: '24px', letterSpacing: '6px', fontWeight: 900, color: PRIMARY_PINK }}>{request.resetCode}</div>
+                              </div>
+                            ) : null}
+                            <button
+                              onClick={() => handleApprovePasswordReset(request)}
+                              disabled={busy}
+                              className="btn-primary"
+                              style={{ width: '100%', opacity: busy ? 0.6 : 1, cursor: busy ? 'not-allowed' : 'pointer' }}
+                            >
+                              {busy ? '코드 만드는 중...' : approved ? '코드 다시 만들기' : '초기화 허용하고 코드 만들기'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>비밀번호 변경</div>

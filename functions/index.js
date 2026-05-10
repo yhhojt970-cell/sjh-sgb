@@ -1,10 +1,23 @@
 const { logger } = require('firebase-functions')
 const { onDocumentWritten } = require('firebase-functions/v2/firestore')
+const { HttpsError, onCall } = require('firebase-functions/v2/https')
 const admin = require('firebase-admin')
+const crypto = require('crypto')
 
 admin.initializeApp()
 
 const db = admin.firestore()
+const DEFAULT_HOUSEHOLD_ID = 'SJH-SGB'
+const ADMIN_LOGIN_IDS = new Set(['yhhojt970'])
+const CHILD_LOGIN_IDS = new Set(['sjh150717', 'sgb170101'])
+const PASSWORD_RESET_CODE_TTL_MS = 60 * 60 * 1000
+
+const isAdminProfile = (profile = {}) => {
+  return profile.role === 'admin' || profile.name === '엄마' || ADMIN_LOGIN_IDS.has(profile.loginId)
+}
+
+const normalizeLoginId = (value) => String(value || '').trim().toLowerCase()
+const generateResetCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0')
 
 const getMessages = (snapshot) => {
   if (!snapshot?.exists) return []
@@ -118,6 +131,174 @@ const sendToTokens = async ({ tokenDocs, title, body, data = {} }) => {
     await deleteInvalidTokens(docs, response.responses)
   }
 }
+
+exports.resetChildPassword = onCall(async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.')
+  }
+
+  const householdId = String(request.data?.householdId || DEFAULT_HOUSEHOLD_ID).trim()
+  const kidLoginId = normalizeLoginId(request.data?.kidLoginId)
+  const requestId = String(request.data?.requestId || '').trim()
+  const newPassword = String(request.data?.newPassword || '').trim()
+
+  if (!householdId || !CHILD_LOGIN_IDS.has(kidLoginId)) {
+    throw new HttpsError('invalid-argument', '아이 계정을 확인해 주세요.')
+  }
+
+  if (newPassword.length < 6) {
+    throw new HttpsError('invalid-argument', '새 비밀번호는 6자 이상이어야 합니다.')
+  }
+
+  const profileSnap = await db.collection('users').doc(uid).get()
+  const profile = profileSnap.data() || {}
+  const profileHouseholdId = profile.householdId || DEFAULT_HOUSEHOLD_ID
+
+  if (!isAdminProfile(profile) || profileHouseholdId !== householdId) {
+    throw new HttpsError('permission-denied', '엄마 계정만 아이 비밀번호를 초기화할 수 있습니다.')
+  }
+
+  const childEmail = `${kidLoginId}@kidschedule.local`
+  let childUser
+  try {
+    childUser = await admin.auth().getUserByEmail(childEmail)
+  } catch (error) {
+    logger.warn('Child auth user not found for password reset', { kidLoginId, error: error.message })
+    throw new HttpsError('not-found', '아이 계정을 찾을 수 없습니다.')
+  }
+
+  await admin.auth().updateUser(childUser.uid, { password: newPassword })
+
+  if (requestId) {
+    await db
+      .collection('households')
+      .doc(householdId)
+      .collection('passwordResetRequests')
+      .doc(requestId)
+      .set({
+        status: 'resolved',
+        resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+        resolvedBy: profile.loginId || uid
+      }, { merge: true })
+  }
+
+  logger.info('Child password reset completed', { householdId, kidLoginId, requestId, adminUid: uid })
+  return { ok: true }
+})
+
+exports.approveChildPasswordReset = onCall(async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.')
+  }
+
+  const householdId = String(request.data?.householdId || DEFAULT_HOUSEHOLD_ID).trim()
+  const kidLoginId = normalizeLoginId(request.data?.kidLoginId)
+  const requestId = String(request.data?.requestId || '').trim()
+
+  if (!householdId || !CHILD_LOGIN_IDS.has(kidLoginId) || !requestId) {
+    throw new HttpsError('invalid-argument', '초기화 요청을 확인해 주세요.')
+  }
+
+  const profileSnap = await db.collection('users').doc(uid).get()
+  const profile = profileSnap.data() || {}
+  const profileHouseholdId = profile.householdId || DEFAULT_HOUSEHOLD_ID
+
+  if (!isAdminProfile(profile) || profileHouseholdId !== householdId) {
+    throw new HttpsError('permission-denied', '엄마 계정만 초기화 코드를 만들 수 있습니다.')
+  }
+
+  const requestRef = db.collection('passwordResetRequests').doc(requestId)
+  const requestSnap = await requestRef.get()
+  const resetRequest = requestSnap.data() || {}
+
+  if (!requestSnap.exists || resetRequest.householdId !== householdId || resetRequest.kidLoginId !== kidLoginId) {
+    throw new HttpsError('not-found', '초기화 요청을 찾을 수 없습니다.')
+  }
+
+  if (resetRequest.status === 'resolved') {
+    throw new HttpsError('failed-precondition', '이미 완료된 요청입니다.')
+  }
+
+  const resetCode = generateResetCode()
+  const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + PASSWORD_RESET_CODE_TTL_MS))
+
+  await requestRef.set({
+    status: 'approved',
+    resetCode,
+    approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    approvedBy: profile.loginId || uid,
+    expiresAt
+  }, { merge: true })
+
+  logger.info('Child password reset approved', { householdId, kidLoginId, requestId, adminUid: uid })
+  return { ok: true, resetCode }
+})
+
+exports.completeChildPasswordReset = onCall(async (request) => {
+  const householdId = String(request.data?.householdId || DEFAULT_HOUSEHOLD_ID).trim()
+  const kidLoginId = normalizeLoginId(request.data?.kidLoginId)
+  const resetCode = String(request.data?.resetCode || '').trim()
+  const newPassword = String(request.data?.newPassword || '').trim()
+
+  if (!householdId || !CHILD_LOGIN_IDS.has(kidLoginId)) {
+    throw new HttpsError('invalid-argument', '아이 계정을 확인해 주세요.')
+  }
+
+  if (!/^\d{6}$/.test(resetCode)) {
+    throw new HttpsError('invalid-argument', '초기화 코드를 확인해 주세요.')
+  }
+
+  if (newPassword.length < 6) {
+    throw new HttpsError('invalid-argument', '새 비밀번호는 6자 이상이어야 합니다.')
+  }
+
+  const requestSnapshot = await db
+    .collection('passwordResetRequests')
+    .where('resetCode', '==', resetCode)
+    .limit(10)
+    .get()
+
+  const requestDoc = requestSnapshot.docs.find((docSnap) => {
+    const data = docSnap.data() || {}
+    return data.householdId === householdId && data.kidLoginId === kidLoginId && data.status === 'approved'
+  })
+
+  if (!requestDoc) {
+    throw new HttpsError('not-found', '사용할 수 있는 초기화 코드를 찾을 수 없습니다.')
+  }
+
+  const resetRequest = requestDoc.data() || {}
+  const expiresAt = resetRequest.expiresAt?.toDate?.()
+  if (expiresAt && expiresAt.getTime() < Date.now()) {
+    await requestDoc.ref.set({
+      status: 'expired',
+      expiredAt: admin.firestore.FieldValue.serverTimestamp(),
+      resetCode: admin.firestore.FieldValue.delete()
+    }, { merge: true })
+    throw new HttpsError('failed-precondition', '초기화 코드가 만료되었습니다.')
+  }
+
+  const childEmail = `${kidLoginId}@kidschedule.local`
+  let childUser
+  try {
+    childUser = await admin.auth().getUserByEmail(childEmail)
+  } catch (error) {
+    logger.warn('Child auth user not found while completing password reset', { kidLoginId, error: error.message })
+    throw new HttpsError('not-found', '아이 계정을 찾을 수 없습니다.')
+  }
+
+  await admin.auth().updateUser(childUser.uid, { password: newPassword })
+  await requestDoc.ref.set({
+    status: 'resolved',
+    resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    resetCode: admin.firestore.FieldValue.delete()
+  }, { merge: true })
+
+  logger.info('Child password reset completed by child', { householdId, kidLoginId, requestId: requestDoc.id })
+  return { ok: true }
+})
 
 exports.notifyFamilyMessages = onDocumentWritten('households/{householdId}/meta/messages', async (event) => {
   const householdId = event.params.householdId

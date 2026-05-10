@@ -9,8 +9,38 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.householdId;
     }
 
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdminForHousehold(hid) {
+      return signedIn()
+        && myHouseholdId() == hid
+        && (myProfile().role == 'admin' || myProfile().name == '엄마' || myProfile().loginId == 'yhhojt970');
+    }
+
+    function isPasswordResetKid(loginId) {
+      return loginId in ['sjh150717', 'sgb170101'];
+    }
+
+    function validPasswordResetRequest() {
+      return request.resource.data.keys().hasOnly(['householdId', 'kidLoginId', 'kidName', 'status', 'source', 'createdAt'])
+        && request.resource.data.householdId == 'SJH-SGB'
+        && isPasswordResetKid(request.resource.data.kidLoginId)
+        && request.resource.data.kidName is string
+        && request.resource.data.status == 'open'
+        && request.resource.data.source == 'login'
+        && request.resource.data.createdAt == request.time;
+    }
+
     match /users/{uid} {
       allow read, write: if signedIn() && uid == request.auth.uid;
+    }
+
+    match /passwordResetRequests/{requestId} {
+      allow create: if validPasswordResetRequest();
+      allow read: if isAdminForHousehold(resource.data.householdId);
+      allow update, delete: if false;
     }
 
     match /households/{hid} {
@@ -24,4 +54,3 @@ service cloud.firestore {
     }
   }
 }
-
