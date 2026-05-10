@@ -1,4 +1,4 @@
-# 지희/가빈 스케줄 (GitHub Pages + 동기화)
+# 지희/가빈 스케줄 (Firebase Hosting + 동기화)
 
 정적 웹앱(Vite + React)이며, 로그인/데이터 동기화는 **Firebase Authentication(아이디/비밀번호) + Firestore**를 사용합니다.
 
@@ -27,21 +27,16 @@ npm run dev
 
 `firestore.rules`를 Firestore Rules에 적용하세요.
 
-## GitHub Pages 배포
+## Firebase Hosting 배포
 
-1) GitHub에 `main` 브랜치로 push  
-2) GitHub 저장소 → **Settings → Pages → Build and deployment → Source: GitHub Actions** 선택  
-3) GitHub 저장소 → **Settings → Secrets and variables → Actions → New repository secret** 에 아래 값을 등록
+현재 운영 URL은 `https://sjh-sgb.web.app`입니다.
 
-- `VITE_FIREBASE_API_KEY`
-- `VITE_FIREBASE_AUTH_DOMAIN`
-- `VITE_FIREBASE_PROJECT_ID`
-- `VITE_FIREBASE_STORAGE_BUCKET`
-- `VITE_FIREBASE_MESSAGING_SENDER_ID`
-- `VITE_FIREBASE_APP_ID`
-- `VITE_FIREBASE_VAPID_KEY`
+```bash
+npm run build
+firebase deploy --only hosting
+```
 
-4) `Deploy to GitHub Pages` 워크플로우가 실행되면 배포 URL이 생깁니다.
+GitHub는 원본 저장소로 사용하고, 실제 앱 배포는 Firebase Hosting으로 진행합니다.
 
 ## 푸시 알림
 

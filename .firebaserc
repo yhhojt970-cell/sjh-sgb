@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "sjh-sgb",
+    "sjh-sgb": "sjh-sgb"
+  },
+  "targets": {},
+  "etags": {}
+}

@@ -6,7 +6,12 @@
 git add .
 git commit -m "Apply latest fixes"
 git push
+npm run build
+firebase deploy --only hosting
 ```
+
+현재 운영 URL은 Firebase Hosting `https://sjh-sgb.web.app`입니다.
+GitHub는 원본 저장소로 계속 사용하고, 실제 앱 배포는 Firebase Hosting으로 진행합니다.
 
 ## 2. 수정한 파일만 올릴 때
 
@@ -34,7 +39,14 @@ git log --oneline -n 5
 git remote -v
 ```
 
-## 6. push 했는데 사이트가 바로 안 바뀔 때
+## 6. Firebase Hosting 사이트가 바로 안 바뀔 때
+
+1. `npm run build`
+2. `firebase deploy --only hosting`
+3. iOS 홈 화면 앱을 완전히 종료 후 다시 열기
+4. 그래도 그대로면 Safari에서 `https://sjh-sgb.web.app` 새로고침
+
+## 7. GitHub Pages 확인(이전 방식)
 
 1. GitHub 저장소로 이동
 2. `Actions` 탭 클릭
@@ -42,7 +54,7 @@ git remote -v
 4. 초록 체크 뜰 때까지 기다리기
 5. 사이트에서 `Ctrl + F5`로 새로고침
 
-## 7. 배포 에러 확인 순서
+## 8. 배포 에러 확인 순서
 
 1. GitHub 저장소 `Actions`
 2. 실패한 실행 클릭
@@ -50,7 +62,7 @@ git remote -v
 4. 에러 문장 복사
 5. Codex에게 그대로 붙여넣기
 
-## 8. Firebase 관련 확인
+## 9. Firebase 관련 확인
 
 - GitHub `Settings` → `Secrets and variables` → `Actions`
 - 아래 7개가 있어야 함
@@ -65,7 +77,7 @@ VITE_FIREBASE_APP_ID
 VITE_FIREBASE_VAPID_KEY
 ```
 
-## 9. 계정 아이디
+## 10. 계정 아이디
 
 ```txt
 엄마: yhhojt970
@@ -73,17 +85,17 @@ VITE_FIREBASE_VAPID_KEY
 손가빈: sgb170101
 ```
 
-## 10. 비밀번호 변경
+## 11. 비밀번호 변경
 
 - 사이트 로그인
 - 오른쪽 위 `설정`
 - 현재 비밀번호 / 새 비밀번호 입력
 - `비밀번호 변경하기`
 
-## 11. 사용량측정
+## 12. 사용량측정
 npx claude-token-meter
 
-## 12. 푸시 알림 배포
+## 13. 푸시 알림 배포
 
 Firebase Console → Project settings → Cloud Messaging → Web Push certificates에서 public key를 만들고 GitHub Actions 변수에 추가하세요.
 
