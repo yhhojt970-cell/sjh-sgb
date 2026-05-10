@@ -101,3 +101,38 @@ firebase deploy --only functions,firestore:rules
 ```
 
 Firebase Console → Project settings → Cloud Messaging → Web Push certificates에서 public key를 만들고 GitHub Actions 변수 `VITE_FIREBASE_VAPID_KEY`에 추가하세요.
+
+## VS Code의 M 표시 정리
+
+VS Code에서 파일 이름 옆에 `M`이 보이면 오류가 아니라 Git 표시입니다.  
+파일은 저장되어 있지만, 아직 Git 기록으로 남기지 않았다는 뜻입니다.
+
+| 표시 | 의미 |
+| --- | --- |
+| `M` | Modified: 기존 파일이 수정됨 |
+| `U` 또는 `??` | Untracked: Git이 아직 추적하지 않는 새 파일 |
+| `A` | Added: 다음 커밋에 포함될 예정 |
+| `D` | Deleted: 삭제된 파일 |
+| `C` | Conflict: 병합 충돌 |
+
+## Git을 저장 기록처럼 쓸 때 순서
+
+작업을 마치고 현재 상태를 기록으로 남기고 싶으면 아래 순서로 실행합니다.
+
+```powershell
+git status
+git add .
+git commit -m "Save latest changes"
+git push
+```
+
+커밋까지 하면 VS Code의 `M` 표시가 사라집니다.  
+GitHub에도 올리고 싶으면 `git push`까지 실행합니다.
+
+## 헷갈릴 때 기준
+
+- 수정한 내용을 계속 쓸 거면 `git add .` 후 `git commit`
+- 수정한 내용을 GitHub에도 올릴 거면 `git push`
+- 수정한 내용을 버릴 거면 VS Code에서 `Discard Changes`
+
+`Discard Changes`는 수정 내용을 지우는 동작이라 조심해서 사용하세요.
