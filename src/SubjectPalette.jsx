@@ -73,6 +73,12 @@ function PaletteItem({
 
   const canEditAny = canEditName || canEditColor || canEditCoins
   const safeCoins = getSubjectCoinValue(subject)
+  const adjustCoinDraft = (delta) => {
+    setCoinScopeDialog((previous) => {
+      const currentDraftCoins = previous?.newCoins ?? safeCoins
+      return { newCoins: Math.max(0, currentDraftCoins + delta) }
+    })
+  }
 
   if (isEditing && canEditAny) {
     return (
@@ -124,7 +130,7 @@ function PaletteItem({
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => { event.stopPropagation(); setCoinScopeDialog({ newCoins: Math.max(0, safeCoins - 1) }) }}
+                onClick={(event) => { event.stopPropagation(); adjustCoinDraft(-1) }}
                 style={{ border: 'none', background: 'rgba(0,0,0,0.06)', color: '#666', borderRadius: '6px', padding: '2px 6px', fontWeight: 900, cursor: 'pointer' }}
                 title="코인 -1"
               >
@@ -133,7 +139,7 @@ function PaletteItem({
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => { event.stopPropagation(); setCoinScopeDialog({ newCoins: safeCoins + 1 }) }}
+                onClick={(event) => { event.stopPropagation(); adjustCoinDraft(1) }}
                 style={{ border: 'none', background: '#ff4d6d20', color: '#ff4d6d', borderRadius: '6px', padding: '2px 6px', fontWeight: 900, cursor: 'pointer' }}
                 title="코인 +1"
               >
