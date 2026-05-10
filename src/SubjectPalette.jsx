@@ -185,11 +185,11 @@ function PaletteItem({
   return (
     <div ref={setNodeRef} style={style} {...(allowDrag ? listeners : {})} {...(allowDrag ? attributes : {})}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{subject.name}</span>
           <span style={{ fontSize: '11px', color: '#ff4d6d', fontWeight: 'bold', flexShrink: 0 }}>+{safeCoins}코인</span>
         </div>
-        <span style={{ display: 'flex', gap: '3px', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ display: 'flex', gap: '3px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {showMoveButtons && (
             <>
               {onMoveUp && (
@@ -347,6 +347,19 @@ export function SubjectPalette({
     })
     const json = stableSubjectsJSON(cleanSubjects)
 
+    // Create backup before saving
+    const backupKey = `backup_subjects_${kidId}_${Date.now()}`
+    try {
+      localStorage.setItem(backupKey, JSON.stringify(cleanSubjects))
+      // Keep only last 5 backups
+      const backupKeys = Object.keys(localStorage).filter(key => key.startsWith(`backup_subjects_${kidId}_`)).sort().reverse()
+      if (backupKeys.length > 5) {
+        backupKeys.slice(5).forEach(key => localStorage.removeItem(key))
+      }
+    } catch (error) {
+      console.warn('Failed to create backup:', error)
+    }
+
     if (!isCloud) {
       localStorage.setItem(getStorageKey(kidId), JSON.stringify(cleanSubjects))
       lastSyncedRef.current[kidId] = json
@@ -365,6 +378,24 @@ export function SubjectPalette({
     setSubjectsByKid((prev) => ({ ...prev, [kidId]: next.length > 0 ? next : prev[kidId] || [] }))
     if (next.length > 0) persistKidSubjects(kidId, next).catch(console.error)
     return next
+  }
+
+  const restoreFromBackup = (kidId) => {
+    const backupKeys = Object.keys(localStorage).filter(key => key.startsWith(`backup_subjects_${kidId}_`)).sort().reverse()
+    if (backupKeys.length === 0) {
+      alert('백업이 없습니다.')
+      return
+    }
+    const latestBackup = backupKeys[0]
+    try {
+      const backupData = JSON.parse(localStorage.getItem(latestBackup))
+      if (confirm(`최근 백업(${new Date(parseInt(latestBackup.split('_').pop())).toLocaleString()})에서 복원하시겠습니까?`)) {
+        updateKidSubjects(kidId, backupData)
+        alert('복원되었습니다.')
+      }
+    } catch (error) {
+      alert('백업 복원 실패: ' + error.message)
+    }
   }
 
   const moveSubject = (kidId, subjectName, direction) => {
@@ -479,6 +510,18 @@ export function SubjectPalette({
     return set.has(category)
   }
 
+  const expandCategoriesForKid = (kidId) => {
+    setExpandedCatsByKid((prev) => {
+      const next = { ...prev }
+      delete next[kidId]
+      return next
+    })
+  }
+
+  const collapseCategoriesForKid = (kidId) => {
+    setExpandedCatsByKid((prev) => ({ ...prev, [kidId]: new Set() }))
+  }
+
   const toggleCategory = (kidId, category) => {
     setExpandedCatsByKid((prev) => {
       const set = new Set(prev[kidId] ?? [])
@@ -581,31 +624,46 @@ export function SubjectPalette({
 
         {isOpen && (
           <>
-            {/* Sort controls */}
-            <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>
-              {[
-                { key: 'manual', label: '직접정렬' },
-                { key: 'name', label: '이름순' },
-                { key: 'coins', label: '코인순' }
-              ].map(({ key, label }) => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                 <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSortMode(kidId, key)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    border: `1px solid ${sortMode === key ? '#ff4d6d' : '#e2e8f0'}`,
-                    background: sortMode === key ? '#ff4d6d10' : 'white',
-                    color: sortMode === key ? '#ff4d6d' : '#888',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    cursor: 'pointer'
-                  }}
+                  onClick={() => collapseCategoriesForKid(kidId)}
+                  style={{ border: '1px solid #ff4d6d', background: '#fff0f3', color: '#ff4d6d', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
                 >
-                  {label}
+                  전체 접기
                 </button>
-              ))}
+                <button
+                  onClick={() => expandCategoriesForKid(kidId)}
+                  style={{ border: '1px solid #22c55e', background: '#ecfdf5', color: '#16a34a', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  전체 펼치기
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                {[
+                  { key: 'manual', label: '직접정렬' },
+                  { key: 'name', label: '이름순' },
+                  { key: 'coins', label: '코인순' }
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSortMode(kidId, key)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      border: `1px solid ${sortMode === key ? '#ff4d6d' : '#e2e8f0'}`,
+                      background: sortMode === key ? '#ff4d6d10' : 'white',
+                      color: sortMode === key ? '#ff4d6d' : '#888',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div style={{ display: 'grid', gap: '8px', marginBottom: '12px' }}>

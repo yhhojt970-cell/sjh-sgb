@@ -2309,6 +2309,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
               onCoinChange={handleSubjectCoinChange}
               isAdmin={isAdmin}
               allowDrag={!isMobile}
+              collapsibleAdminSections
             />
             </div>
           )}

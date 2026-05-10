@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\yhhoj\\\\지희가빈스케줄\\\\src\" -Recurse)",
+      "Bash(Select-Object FullName)",
+      "Bash(firebase deploy *)"
+    ]
+  }
+}
