@@ -21,10 +21,15 @@ const getSubjectCoinValue = (subject, fallback = 1) => {
   return Number.isNaN(parsedCoins) ? fallback : Math.max(0, parsedCoins)
 }
 
+const getSubjectColorValue = (subject, index = 0) => (
+  subject?.color || DEFAULT_SUBJECTS[index % DEFAULT_SUBJECTS.length]?.color || '#8b5cf6'
+)
+
 const normalizeSubjectList = (subjects) => {
   const source = Array.isArray(subjects) && subjects.length > 0 ? subjects : DEFAULT_SUBJECTS
-  return source.map((subject) => ({
+  return source.map((subject, index) => ({
     ...subject,
+    color: getSubjectColorValue(subject, index),
     coins: getSubjectCoinValue(subject)
   }))
 }
@@ -53,7 +58,7 @@ function PaletteItem({
 
   useEffect(() => {
     setDraftName(subject.name)
-    setDraftColor(subject.color)
+    setDraftColor(getSubjectColorValue(subject))
     setDraftCoins(getSubjectCoinValue(subject))
   }, [subject.name, subject.color, subject.coins])
 
@@ -61,7 +66,7 @@ function PaletteItem({
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.7 : 1,
     border: '1px solid rgba(0,0,0,0.06)',
-    borderLeft: `6px solid ${subject.color}`,
+    borderLeft: `6px solid ${getSubjectColorValue(subject)}`,
     background: 'white',
     borderRadius: '12px',
     padding: '10px 12px',
@@ -90,7 +95,7 @@ function PaletteItem({
         )}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {canEditColor ? (
-            <input type="color" value={draftColor} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '30px', height: '30px', border: 'none', background: 'none', padding: 0 }} />
+            <input type="color" value={draftColor || getSubjectColorValue(subject)} onChange={(event) => setDraftColor(event.target.value)} style={{ width: '30px', height: '30px', border: 'none', background: 'none', padding: 0 }} />
           ) : null}
           <button
             type="button"
@@ -101,7 +106,7 @@ function PaletteItem({
               onSave(subject.name, {
                 ...subject,
                 name: nextName,
-                color: canEditColor ? draftColor : subject.color,
+                color: canEditColor ? (draftColor || getSubjectColorValue(subject)) : getSubjectColorValue(subject),
                 coins: safeCoins
               })
               setIsEditing(false)
@@ -229,13 +234,27 @@ export function SubjectPalette({
     }))
   }
 
+  const persistKidSubjects = async (kidId, subjects) => {
+    const normalizedSubjects = normalizeSubjectList(subjects)
+    const json = JSON.stringify(normalizedSubjects || [])
+
+    if (!isCloud) {
+      localStorage.setItem(getStorageKey(kidId), json)
+      return
+    }
+
+    const ref = doc(cloud.db, 'households', cloud.householdId, 'kids', kidId)
+    await setDoc(ref, { subjects: normalizedSubjects, updatedAt: serverTimestamp() }, { merge: true })
+    lastSyncedRef.current[kidId] = json
+  }
+
   const updateKidSubjects = (kidId, nextOrUpdater) => {
-    setSubjectsByKid((prev) => {
-      const current = prev[kidId] || DEFAULT_SUBJECTS
-      const next = normalizeSubjectList(typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater)
-      if (!isCloud) localStorage.setItem(getStorageKey(kidId), JSON.stringify(next))
-      return { ...prev, [kidId]: next }
-    })
+    const current = subjectsByKid[kidId] || DEFAULT_SUBJECTS
+    const next = normalizeSubjectList(typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater)
+
+    setSubjectsByKid((prev) => ({ ...prev, [kidId]: next }))
+    persistKidSubjects(kidId, next).catch(console.error)
+    return next
   }
 
   useEffect(() => {
@@ -363,13 +382,13 @@ export function SubjectPalette({
                     const afterCoins = getSubjectCoinValue(nextSubject)
                     updateKidSubjects(kidId, (items) => (items || []).map((item) => (item.name === previousName ? nextSubject : item)))
                     if (typeof onCoinChange === 'function' && beforeCoins !== afterCoins) {
-                      onCoinChange({ kidId, subjectName: nextSubject.name || previousName, beforeCoins, afterCoins, scope })
+                      onCoinChange({ kidId, subjectName: nextSubject.name || previousName, previousSubjectName: previousName, beforeCoins, afterCoins, scope })
                     }
                   }}
                   onDelete={(name) => updateKidSubjects(kidId, (items) => (items || []).filter((item) => item.name !== name))}
                   allowDrag={allowKidDrag}
                   canEditName
-                  canEditColor={isAdmin}
+                  canEditColor
                   canEditCoins={isAdmin}
                   canDelete
                 />
@@ -379,9 +398,7 @@ export function SubjectPalette({
             <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <input className="input-field" style={{ flex: 1 }} placeholder="과목 추가" value={draft.name} onChange={(event) => patchDraft(kidId, { name: event.target.value })} />
-                {isAdmin ? (
-                  <input type="color" value={draft.color} onChange={(event) => patchDraft(kidId, { color: event.target.value })} style={{ width: '40px', height: '40px', border: 'none', background: 'none' }} />
-                ) : null}
+                <input type="color" value={draft.color || '#8b5cf6'} onChange={(event) => patchDraft(kidId, { color: event.target.value })} style={{ width: '40px', height: '40px', border: 'none', background: 'none' }} />
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {isAdmin ? (
@@ -412,7 +429,7 @@ export function SubjectPalette({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <h3 style={{ fontSize: '15px', fontWeight: 900 }}>{isAdmin ? '과목 총관리' : '내 과목 팔레트'}</h3>
         <span style={{ fontSize: '11px', color: '#999' }}>
-          {isAdmin ? '아이별 과목/코인 관리' : (allowDrag ? '드래그해서 시간표에 넣기' : '과목 이름 관리')}
+          {isAdmin ? '아이별 과목/코인 관리' : (allowDrag ? '드래그해서 시간표에 넣기' : '과목/색상 관리')}
         </span>
       </div>
 

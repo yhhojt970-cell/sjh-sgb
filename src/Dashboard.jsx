@@ -767,18 +767,54 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
   }
 
-  const handleSubjectCoinChange = async ({ kidId, subjectName, beforeCoins, afterCoins, scope }) => {
+  const isTaskOnSelectedDate = (task) => {
+    if (task?.type !== 'class') return task?.date === todayStr
+
+    const classStart = task.startDate || task.classStartDate || ''
+    const classEnd = task.endDate || task.classEndDate || ''
+    if (classStart && todayStr < classStart) return false
+    if (classEnd && todayStr > classEnd) return false
+
+    const classWeekdays = getTaskWeekdays(task)
+    if (classWeekdays.length > 0) return classWeekdays.includes(getDay(selectedDate))
+    if (task.date) return task.date === todayStr
+    return true
+  }
+
+  const handleSubjectCoinChange = async ({ kidId, subjectName, previousSubjectName, beforeCoins, afterCoins, scope }) => {
     if (!isAdmin || beforeCoins === afterCoins) return
-    await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
-    if ((scope === 'today' || scope === 'all') && kidId === activeKidId) {
-      const nextTasks = tasks.map((task) => {
-        if (task.name !== subjectName) return task
-        if (scope === 'today' && task.date !== todayStr) return task
+    const namesToUpdate = new Set([subjectName, previousSubjectName].filter(Boolean))
+
+    if (scope === 'today' || scope === 'all') {
+      let targetDocId = kidId
+      let currentTasks = kidId === activeKidId ? tasks : (allTasksByKid[kidId] || [])
+
+      if (isCloud) {
+        targetDocId = await getKidDocIdForWrite(kidId)
+        const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+        const kidData = snap.exists() ? snap.data() : {}
+        currentTasks = Array.isArray(kidData?.tasks) ? kidData.tasks : currentTasks
+      }
+
+      const nextTasks = currentTasks.map((task) => {
+        if (!namesToUpdate.has(task.name)) return task
+        if (scope === 'today' && !isTaskOnSelectedDate(task)) return task
         return { ...task, coins: afterCoins }
       })
-      setTasks(nextTasks)
-      await persistKidState({ tasks: nextTasks })
+
+      if (isCloud) {
+        await setDoc(
+          doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+          { tasks: nextTasks, updatedAt: serverTimestamp() },
+          { merge: true }
+        )
+      }
+
+      setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+      if (kidId === activeKidId || targetDocId === resolvedKidDocId) setTasks(nextTasks)
     }
+
+    await appendCoinLog({ kidId, subjectName, beforeCoins, afterCoins })
   }
 
   const deleteCoinLog = async (logId) => {
