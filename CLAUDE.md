@@ -9,7 +9,7 @@
 - **이름**: 손지희·손가빈 스케줄 관리 앱
 - **목적**: 두 아이(지희·가빈)의 일일 스케줄 관리, 코인(보상) 시스템, 용돈기입장, 보상 관리
 - **사용자**: 엄마(관리자, `yhhojt970`), 손지희(`sjh150717`), 손가빈(`sgb170101`)
-- **배포**: GitHub Pages (push → GitHub Actions 자동 배포)
+- **배포**: Firebase Hosting (`npm run build && firebase deploy --only hosting`) → https://sjh-sgb.web.app
 - **백엔드**: Firebase Firestore (클라우드 동기화), localStorage (오프라인 폴백)
 
 ---
@@ -22,7 +22,7 @@
 | 스타일 | 인라인 스타일 (CSS-in-JS) + `src/styles.css` |
 | DB | Firebase Firestore (`setDoc` with `{ merge: true }`) |
 | 인증 | Firebase Auth |
-| DnD | `@dnd-kit/core` (과목 팔레트 → 타임그리드 드래그) |
+| DnD | `@dnd-kit/core` + `@dnd-kit/sortable` (팔레트→그리드 드래그, 팔레트 내 정렬) |
 | 아이콘 | `lucide-react` |
 | 날짜 | `date-fns` (`format`, `startOfWeek` 등) |
 
@@ -63,6 +63,16 @@ households/{householdId}/meta/messages  — 가족 메시지
   essentials: Essential[],
   spentCoins: number,
   subjects: Subject[],
+}
+```
+
+### Subject (과목 팔레트)
+```js
+{
+  name: string,
+  color: string,          // hex
+  coins: number,
+  category?: string,      // 선택적 카테고리 (트리 그룹핑용)
 }
 ```
 
@@ -136,7 +146,7 @@ todayCoins     = dailyActivityLogs.reduce(sum(coins))
 
 ### 코인 수정 경로
 1. **카드 편집 폼** (TimeGrid) — 엄마만 코인 수정 가능 (`isAdmin` 체크)
-2. **기록관리 모달** (Dashboard) — 엄마만 접근 (`isAdmin` gate)
+2. **전체 활동 로그** (Dashboard) — 엄마만 접근 (`isAdmin` gate)
 3. **과목 총관리 팔레트** — scope 다이얼로그 표시 (기본 설정만 / 오늘 일정도 / 전체 일정도)
 4. **용돈기입장 작성** — 아이가 저장 시 `allowanceCoinReward`코인 자동 지급
 
@@ -162,6 +172,15 @@ todayCoins     = dailyActivityLogs.reduce(sum(coins))
 | 2 | 5px, 80% | 컬러 살짝 | 컬러 glow |
 | 3 | 6px, 100% | 컬러 뚜렷 | 강한 glow |
 | 4+ | 8px, 금색 | 따뜻한 노란빛 | 황금빛 glow |
+
+### SubjectPalette (SubjectPalette.jsx)
+- subjects는 `persistKidSubjects(kidId, subjects)` 로만 Firestore에 기록 (debounce 자동저장 없음)
+- `stableSubjectsJSON(arr)` — 속성 순서 무관하게 일관된 JSON 비교용 헬퍼
+- `normalizeSubjectList(arr)` — 항상 `{ name, color, coins, ?category }` 순서로 정규화
+- onSnapshot 수신 시 `subjects` 필드가 없으면 로컬 상태 유지 (초기화 방지)
+- 카테고리(`category`) — 선택 필드, 같은 카테고리끼리 헤더 아래 그룹핑
+- 정렬: `sortModeByKid[kidId]` = `'manual'` | `'name'` | `'coins'`
+- 직접정렬 모드에서 ↑↓ 버튼으로 배열 내 순서 교체 (`moveSubject`)
 
 ### persistKidState (Dashboard.jsx)
 ```js
@@ -203,12 +222,16 @@ await persistKidState({ tasks, doneLogs, ... })
 
 ---
 
-## 기록관리 (dailyLog) 모달
+## 전체 활동 로그 (기록관리 통합)
 
-- 날짜별 완료 기록, 용돈기입장, 코인 변경 로그 통합 표시
-- `logType`: `'activity'` | `'coin'` | `'allowance'`
-- 엄마만 접근 (`{showDailyLog && isAdmin && ...}`)
+- 기록관리 모달은 삭제됨. 전체 활동 로그에 통합
+- 날짜 필터: `auditDateFilter` — `'all'` | `'yyyy-MM-dd'`
+  - "전체 기간" 버튼 + `<input type="date">` 달력 직접 선택
+- 뷰 모드: `auditViewMode` — `'list'` | `'grouped'`
+  - 보고서(grouped): 학습/수업, 코인, 용돈 섹션 분리
+  - 목록(list): 날짜 역순 플랫 목록
 - 코인 수정 → `saveLogEdit()` → coinHistory 배열에 이력 추가
+- 엄마만 접근 (`isAdmin` gate)
 
 ---
 

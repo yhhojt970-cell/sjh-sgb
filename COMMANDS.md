@@ -10,8 +10,11 @@ npm run build
 firebase deploy --only hosting
 ```
 
-현재 운영 URL은 Firebase Hosting `https://sjh-sgb.web.app`입니다.
-GitHub는 원본 저장소로 계속 사용하고, 실제 앱 배포는 Firebase Hosting으로 진행합니다.
+운영 URL: **https://sjh-sgb.web.app**  
+GitHub는 원본 저장소, 실제 앱 배포는 Firebase Hosting으로 진행합니다.
+
+npm run build
+firebase deploy --only hosting
 
 ## 2. 수정한 파일만 올릴 때
 
@@ -46,26 +49,17 @@ git remote -v
 3. iOS 홈 화면 앱을 완전히 종료 후 다시 열기
 4. 그래도 그대로면 Safari에서 `https://sjh-sgb.web.app` 새로고침
 
-## 7. GitHub Pages 확인(이전 방식)
+## 7. 배포 에러 확인 순서
 
-1. GitHub 저장소로 이동
-2. `Actions` 탭 클릭
-3. `Deploy to GitHub Pages` 확인
-4. 초록 체크 뜰 때까지 기다리기
-5. 사이트에서 `Ctrl + F5`로 새로고침
-
-## 8. 배포 에러 확인 순서
-
-1. GitHub 저장소 `Actions`
+1. GitHub 저장소 `Actions` 탭
 2. 실패한 실행 클릭
 3. 빨간 줄이 있는 step 클릭
-4. 에러 문장 복사
-5. Codex에게 그대로 붙여넣기
+4. 에러 문장 복사 후 Claude에게 붙여넣기
 
-## 9. Firebase 관련 확인
+## 8. Firebase 관련 확인
 
-- GitHub `Settings` → `Secrets and variables` → `Actions`
-- 아래 7개가 있어야 함
+GitHub `Settings` → `Secrets and variables` → `Actions`  
+아래 7개가 있어야 합니다.
 
 ```txt
 VITE_FIREBASE_API_KEY
@@ -77,7 +71,7 @@ VITE_FIREBASE_APP_ID
 VITE_FIREBASE_VAPID_KEY
 ```
 
-## 10. 계정 아이디
+## 9. 계정 아이디
 
 ```txt
 엄마: yhhojt970
@@ -85,26 +79,25 @@ VITE_FIREBASE_VAPID_KEY
 손가빈: sgb170101
 ```
 
-## 11. 비밀번호 변경
+## 10. 비밀번호 변경
 
-- 사이트 로그인
-- 오른쪽 위 `설정`
-- 현재 비밀번호 / 새 비밀번호 입력
-- `비밀번호 변경하기`
+1. 사이트 로그인
+2. 오른쪽 위 `설정`
+3. 현재 비밀번호 / 새 비밀번호 입력
+4. `비밀번호 변경하기`
 
-## 12. 사용량측정
+## 11. 사용량 측정
+
+```powershell
 npx claude-token-meter
-
-## 13. 푸시 알림 배포
-
-Firebase Console → Project settings → Cloud Messaging → Web Push certificates에서 public key를 만들고 GitHub Actions 변수에 추가하세요.
-
-```txt
-VITE_FIREBASE_VAPID_KEY
 ```
 
-Cloud Functions까지 배포해야 앱을 닫아도 가족 메시지 알림이 도착합니다.
+## 12. Cloud Functions / 푸시 알림 배포
+
+앱을 닫아도 가족 메시지 알림이 도착하려면 Cloud Functions까지 배포해야 합니다.
 
 ```powershell
 firebase deploy --only functions,firestore:rules
 ```
+
+Firebase Console → Project settings → Cloud Messaging → Web Push certificates에서 public key를 만들고 GitHub Actions 변수 `VITE_FIREBASE_VAPID_KEY`에 추가하세요.

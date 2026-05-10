@@ -286,8 +286,8 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
   const [showAllCoinLogs, setShowAllCoinLogs] = useState(false)
-  const [showDailyLog, setShowDailyLog] = useState(false)
   const [showTotalAuditLog, setShowTotalAuditLog] = useState(false)
+  const [auditViewMode, setAuditViewMode] = useState('list') // 'list' | 'grouped'
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [showAddSpecialEvent, setShowAddSpecialEvent] = useState(false)
   const [specialEventName, setSpecialEventName] = useState('')
@@ -297,7 +297,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [viewMonth, setViewMonth] = useState(new Date())
   const [expandedCoinGroups, setExpandedCoinGroups] = useState({})
   const [auditLogFilter, setAuditLogFilter] = useState('all') // 'all', 'study', 'coin', 'allowance'
-  const [auditDateFilter, setAuditDateFilter] = useState('all') // 'all', 'today'
+  const [auditDateFilter, setAuditDateFilter] = useState('all') // 'all' | 'yyyy-MM-dd'
   const [dismissedEditRequestKey, setDismissedEditRequestKey] = useState('')
   const [requestEditDraft, setRequestEditDraft] = useState(null) // { logId, coins, status }
   const [logEditDraft, setLogEditDraft] = useState(null) // { logId, coins, status }
@@ -830,21 +830,38 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), index))
   const todayStr = format(selectedDate, 'yyyy-MM-dd')
 
-  const todayTasks = useMemo(
-    () =>
-      tasks.filter((task) => {
-        if (task.type !== 'class') return task.date === todayStr
-        const classStart = task.startDate || task.classStartDate || ''
-        const classEnd = task.endDate || task.classEndDate || ''
-        if (classStart && todayStr < classStart) return false
-        if (classEnd && todayStr > classEnd) return false
-        const classWeekdays = getTaskWeekdays(task)
-        if (classWeekdays.length > 0) return classWeekdays.includes(getDay(selectedDate))
-        if (task.date) return task.date === todayStr
-        return true
-      }),
-    [tasks, selectedDate, todayStr]
-  )
+  const todayTasks = useMemo(() => {
+    const filtered = tasks.filter((task) => {
+      if (task.type !== 'class') return task.date === todayStr
+      const classStart = task.startDate || task.classStartDate || ''
+      const classEnd = task.endDate || task.classEndDate || ''
+      if (classStart && todayStr < classStart) return false
+      if (classEnd && todayStr > classEnd) return false
+      const classWeekdays = getTaskWeekdays(task)
+      if (classWeekdays.length > 0) return classWeekdays.includes(getDay(selectedDate))
+      if (task.date) return task.date === todayStr
+      return true
+    })
+
+    // 같은 이름의 일반 일정이 오늘 날짜로 있으면 고정 수업은 숨김 (중복 방지)
+    const studyNameSet = new Set(
+      filtered.filter((t) => t.type !== 'class').map((t) => t.name)
+    )
+    // 고정 수업 중복 제거: 같은 이름+시작시간이면 코인 높은 것만 유지
+    const classDedup = new Map()
+    for (const task of filtered) {
+      if (task.type !== 'class') continue
+      const key = `${task.name}-${task.startTime}`
+      const existing = classDedup.get(key)
+      if (!existing || (task.coins || 0) > (existing.coins || 0)) classDedup.set(key, task)
+    }
+
+    return filtered.filter((task) => {
+      if (task.type !== 'class') return true
+      if (studyNameSet.has(task.name)) return false
+      return classDedup.get(`${task.name}-${task.startTime}`)?.id === task.id
+    })
+  }, [tasks, selectedDate, todayStr])
 
   const getTaskCoins = (task) => {
     if (!task) return 0
@@ -1575,7 +1592,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     [doneLogs]
   )
   const editRequestKey = pendingEditRequests.map((log) => log.id).sort().join('|')
-  const shouldShowEditRequestPopup = isAdmin && pendingEditRequests.length > 0 && editRequestKey !== dismissedEditRequestKey && !showDailyLog
+  const shouldShowEditRequestPopup = isAdmin && pendingEditRequests.length > 0 && editRequestKey !== dismissedEditRequestKey && !showTotalAuditLog
 
   const dailyActivityLogs = useMemo(
     () => doneLogs.filter((log) => log.date === todayStr && log.type !== 'gift'),
@@ -1645,24 +1662,28 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
 
   const saveLogEdit = async () => {
     if (!logEditDraft) return
-    const { logId, coins, status } = logEditDraft
+    const { logId, coins, status, name } = logEditDraft
     const log = doneLogs.find(l => l.id === logId)
     if (!log) return
     const newCoins = Number(coins)
     const prevCoins = Number(log.coins || 0)
+    const newName = (name || '').trim() || log.name
     const coinHistory = prevCoins !== newCoins
       ? [...(log.coinHistory || []), { from: prevCoins, to: newCoins, changedAt: format(new Date(), 'yyyy-MM-dd') }]
       : (log.coinHistory || [])
     const nextLogs = doneLogs.map(l =>
-      l.id === logId ? { ...l, coins: newCoins, status, coinHistory } : l
+      l.id === logId ? { ...l, name: newName, coins: newCoins, status, coinHistory } : l
     )
     let nextTasks = tasks
-    if (log.type !== 'class' && status === '' && log.status !== '') {
-      nextTasks = tasks.map(t =>
-        String(t.id) === String(log.taskId) && t.date === log.date
-          ? { ...t, completed: false, status: '', startTimeActual: '', actualStartTime: '', endTimeActual: '', actualEndTime: '', durationActual: 0, actualDuration: 0, durationMinutes: 0 }
-          : t
-      )
+    if (log.type !== 'class') {
+      nextTasks = tasks.map(t => {
+        if (String(t.id) !== String(log.taskId) || t.date !== log.date) return t
+        const patch = { name: newName }
+        if (status === '' && log.status !== '') {
+          Object.assign(patch, { completed: false, status: '', startTimeActual: '', actualStartTime: '', endTimeActual: '', actualEndTime: '', durationActual: 0, actualDuration: 0, durationMinutes: 0 })
+        }
+        return { ...t, ...patch }
+      })
     }
     setDoneLogs(nextLogs)
     if (nextTasks !== tasks) setTasks(nextTasks)
@@ -2214,8 +2235,9 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
             <div style={{ display: 'flex', gap: isMobile ? '4px' : '10px', overflowX: isMobile ? 'auto' : 'visible', paddingBottom: isMobile ? '2px' : 0 }}>
               {isAdmin && <button onClick={openSubjectManager} className="header-btn-original" title="과목 총 관리" aria-label="과목 총 관리"><Plus size={isMobile ? 18 : 22} /></button>}
               {isAdmin && (
-                <button onClick={() => setShowTotalAuditLog(true)} className="header-btn-original" title="전체 활동 로그">
+                <button onClick={() => setShowTotalAuditLog(true)} className="header-btn-original" title="활동 로그" style={{ position: 'relative' }}>
                   <Calendar size={isMobile ? 18 : 22} color="#fbbf24" />
+                  {pendingEditRequests.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
                 </button>
               )}
               {isAdmin && (
@@ -2226,12 +2248,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       {unreadRepliesForAdmin > 9 ? '9+' : unreadRepliesForAdmin}
                     </span>
                   ) : null}
-                </button>
-              )}
-              {isAdmin && (
-                <button onClick={() => setShowDailyLog(true)} className="header-btn-original" style={{ position: 'relative' }} title="오늘의 기록 관리">
-                  <Calendar size={isMobile ? 18 : 22} />
-                  {pendingEditRequests.length > 0 && <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24' }}></span>}
                 </button>
               )}
               <button onClick={() => setShowAppLauncher(true)} className="header-btn-original" title="학습 앱">
@@ -2531,194 +2547,6 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         )}
 
-        {showDailyLog && isAdmin && (
-          <div className="modal-overlay" onClick={() => setShowDailyLog(false)}>
-            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: isMobile ? '14px' : '24px', maxWidth: isMobile ? '100%' : '620px', width: isMobile ? '100%' : '95%', maxHeight: '88vh', overflowY: 'auto', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <div>
-                  <h2 style={{ fontWeight: 900, color: PRIMARY_PINK, margin: '0 0 2px' }}>{format(selectedDate, 'yyyy년 M월 d일')} 기록 관리</h2>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700 }}>현재 코인 합계 <strong style={{ color: '#c96d00' }}>{availableCoins}</strong>코인</div>
-                </div>
-                <button onClick={() => setShowDailyLog(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
-              </div>
-
-              <div style={{ display: 'grid', gap: '14px' }}>
-                <section style={{ border: '1px solid #ffe1ea', borderRadius: '14px', padding: '12px' }}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>고정수업 / 과목</h3>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {dailyActivityLogs.map((log) => {
-                      const isEditingThis = logEditDraft?.logId === log.id
-                      return (
-                        <div key={`daily-activity-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
-                          <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-                            <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
-                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {log.name}
-                                {log.editRequested ? <span style={{ color: PRIMARY_PINK }}>· 수정 요청</span> : null}
-                                {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
-                              </div>
-                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>
-                                {getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}
-                              </div>
-                              {log.coinHistory && log.coinHistory.length > 0 && (
-                                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                  {log.coinHistory.map((h, i) => (
-                                    <span key={i}><span style={{ textDecoration: 'line-through' }}>{h.from}코인</span> → {h.to}코인 <span style={{ color: '#cbd5e1' }}>({h.changedAt})</span></span>
-                                  ))}
-                                </div>
-                              )}
-                            </button>
-                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
-                              {log.autoCompleted && (
-                                <button
-                                  onClick={() => grantAutoCompletedCoins(log)}
-                                  title="코인 적립"
-                                  style={{ border: 'none', background: '#fef9c3', color: '#b45309', padding: '0 8px', height: '32px', borderRadius: '10px', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                >
-                                  코인 적립
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setLogEditDraft(isEditingThis ? null : { logId: log.id, coins: Number(log.coins || 0), status: log.status || '' })}
-                                title="수정"
-                                style={{ border: 'none', background: isEditingThis ? '#dbe7ff' : '#f1f5f9', color: isEditingThis ? '#355eb5' : '#666', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                              >
-                                <Edit3 size={14} />
-                              </button>
-                              <button onClick={() => deleteDoneLog(log.id)} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                                <Trash size={15} />
-                              </button>
-                            </div>
-                          </div>
-                          {isEditingThis && (
-                            <div style={{ padding: '12px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
-                              {log.type === 'class' && (
-                                <div style={{ marginBottom: '10px' }}>
-                                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
-                                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                                    {CLASS_STATUSES.map(({ value, label, bg }) => (
-                                      <button
-                                        key={value}
-                                        onClick={() => {
-                                          const defaultCoins = value === 'completed' ? Number(log.coins || 0) : 0
-                                          setLogEditDraft(prev => ({ ...prev, status: value, coins: defaultCoins }))
-                                        }}
-                                        style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === value ? bg : '#f1f5f9', color: logEditDraft.status === value ? 'white' : '#555' }}
-                                      >
-                                        {label}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {log.type !== 'class' && (
-                                <div style={{ marginBottom: '10px' }}>
-                                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>완료 상태</div>
-                                  <button
-                                    onClick={() => setLogEditDraft(prev => ({ ...prev, status: prev.status === '' ? log.status : '' }))}
-                                    style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === '' ? '#94a3b8' : '#f1f5f9', color: logEditDraft.status === '' ? 'white' : '#555' }}
-                                  >
-                                    {logEditDraft.status === '' ? '✓ 완료 취소됨' : '완료 취소하기'}
-                                  </button>
-                                </div>
-                              )}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                                <span style={{ fontSize: '12px', color: '#555', fontWeight: 700 }}>코인</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={logEditDraft.coins}
-                                  onChange={(e) => setLogEditDraft(prev => ({ ...prev, coins: e.target.value }))}
-                                  style={{ width: '66px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', textAlign: 'center', fontWeight: 900, fontSize: '14px' }}
-                                />
-                              </div>
-                              {!logEditDraft.showSaveDialog ? (
-                                <div style={{ display: 'flex', gap: '5px' }}>
-                                  <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: true }))} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>
-                                    저장
-                                  </button>
-                                  <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-                                    취소
-                                  </button>
-                                </div>
-                              ) : (
-                                <div>
-                                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 700, textAlign: 'center' }}>저장 방식 선택</div>
-                                  <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
-                                    <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
-                                      이번 기록만 저장
-                                    </button>
-                                    <button
-                                      onClick={async () => { await saveLogEdit(); openFullSettingEdit(log) }}
-                                      style={{ flex: 1, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}
-                                    >
-                                      기본 설정도 변경
-                                    </button>
-                                  </div>
-                                  <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: false }))} style={{ width: '100%', padding: '7px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>
-                                    뒤로
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                    {dailyActivityLogs.length === 0 ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 수업/과목 기록이 없어요.</div> : null}
-                  </div>
-                </section>
-
-                <section style={{ border: '1px solid #ffe8b1', borderRadius: '14px', padding: '12px' }}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인</h3>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {dailyGiftLogs.map((log) => (
-                      <div key={`daily-gift-${log.id}`} style={{ background: '#fffdf3', border: '1px solid #ffe8b1', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name}</div>
-                          <div style={{ color: '#b45309', fontSize: '11px', marginTop: '3px' }}>+{Number(log.coins || 0)}코인</div>
-                        </div>
-                        <button onClick={() => deleteDoneLog(log.id)} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash size={15} />
-                        </button>
-                      </div>
-                    ))}
-                    {dailyCoinLogs.map((log) => (
-                      <div key={`daily-coin-${log.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.subjectName}</div>
-                          <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{log.beforeCoins} → {log.afterCoins}</div>
-                        </div>
-                        <button onClick={() => deleteCoinLog(log.id)} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash size={15} />
-                        </button>
-                      </div>
-                    ))}
-                    {dailyGiftLogs.length === 0 && dailyCoinLogs.length === 0 ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 코인 기록이 없어요.</div> : null}
-                  </div>
-                </section>
-
-                <section style={{ border: '1px solid #dbeafe', borderRadius: '14px', padding: '12px' }}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>용돈기입장</h3>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {dailyAllowanceLogs.map((entry) => (
-                      <div key={`daily-allowance-${entry.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{entry.title}</div>
-                          <div style={{ color: entry.type === 'income' ? '#166534' : '#991b1b', fontSize: '11px', marginTop: '3px' }}>{entry.type === 'income' ? '+' : '-'}{formatAmount(entry.amount)}원{entry.memo ? ` · ${entry.memo}` : ''}</div>
-                        </div>
-                        <button onClick={() => { if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(entry.id) }} title="삭제" style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                          <Trash size={15} />
-                        </button>
-                      </div>
-                    ))}
-                    {dailyAllowanceLogs.length === 0 ? <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 용돈 기록이 없어요.</div> : null}
-                  </div>
-                </section>
-              </div>
-            </div>
-          </div>
-        )}
 
         {showClassManager && isAdmin && (
           <div className="modal-overlay" onClick={() => setShowClassManager(false)}>
@@ -3421,15 +3249,21 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-                <button 
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
                   onClick={() => setAuditDateFilter('all')}
-                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditDateFilter === 'all' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditDateFilter === 'all' ? LIGHT_PINK : 'white', color: auditDateFilter === 'all' ? PRIMARY_PINK : '#666' }}
+                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditDateFilter === 'all' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditDateFilter === 'all' ? LIGHT_PINK : 'white', color: auditDateFilter === 'all' ? PRIMARY_PINK : '#666', whiteSpace: 'nowrap', cursor: 'pointer' }}
                 >전체 기간</button>
-                <button 
-                  onClick={() => setAuditDateFilter('today')}
-                  style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditDateFilter === 'today' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditDateFilter === 'today' ? LIGHT_PINK : 'white', color: auditDateFilter === 'today' ? PRIMARY_PINK : '#666' }}
-                >오늘만</button>
+                <input
+                  type="date"
+                  value={auditDateFilter !== 'all' ? auditDateFilter : ''}
+                  onChange={(e) => setAuditDateFilter(e.target.value || 'all')}
+                  style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '8px', border: auditDateFilter !== 'all' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', color: auditDateFilter !== 'all' ? PRIMARY_PINK : '#666', background: auditDateFilter !== 'all' ? LIGHT_PINK : 'white', cursor: 'pointer' }}
+                />
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                  <button onClick={() => setAuditViewMode('list')} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditViewMode === 'list' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditViewMode === 'list' ? LIGHT_PINK : 'white', color: auditViewMode === 'list' ? PRIMARY_PINK : '#666', fontWeight: 900, cursor: 'pointer' }}>목록</button>
+                  <button onClick={() => setAuditViewMode('grouped')} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: auditViewMode === 'grouped' ? `1px solid ${PRIMARY_PINK}` : '1px solid #ddd', background: auditViewMode === 'grouped' ? LIGHT_PINK : 'white', color: auditViewMode === 'grouped' ? PRIMARY_PINK : '#666', fontWeight: 900, cursor: 'pointer' }}>보고서</button>
+                </div>
               </div>
 
               <div style={{ background: '#fdf4f7', padding: '15px', borderRadius: '18px', marginBottom: '20px', border: '1px solid #ffdeeb' }}>
@@ -3449,15 +3283,148 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 </div>
               </div>
 
+              {auditViewMode === 'grouped' ? (() => {
+                const viewDateStr = auditDateFilter !== 'all' ? auditDateFilter : todayStr
+                const grpActivity = doneLogs.filter(l => l.date === viewDateStr && l.type !== 'gift')
+                const grpGift = doneLogs.filter(l => l.date === viewDateStr && l.type === 'gift')
+                const grpCoin = coinChangeLogsForView.filter(l => l.date === viewDateStr)
+                const grpAllowance = allowanceEntries.filter(e => e.date === viewDateStr)
+                return (
+                  <div style={{ display: 'grid', gap: '14px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 900, color: '#64748b', textAlign: 'center' }}>{viewDateStr} 보고서</div>
+                    <section style={{ border: '1px solid #ffe1ea', borderRadius: '14px', padding: '12px' }}>
+                      <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>학습 / 수업</h3>
+                      <div style={{ display: 'grid', gap: '8px' }}>
+                        {grpActivity.map((log) => {
+                          const isEditingThis = logEditDraft?.logId === log.id
+                          return (
+                            <div key={`grp-act-${log.id}`} style={{ background: '#f8fafc', border: log.editRequested ? `1.5px solid ${PRIMARY_PINK}` : (isEditingThis ? '1.5px solid #7c9cff' : '1px solid #e2e8f0'), borderRadius: '12px', overflow: 'hidden' }}>
+                              <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+                                <button onClick={() => focusTaskFromLog(log)} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
+                                  <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {log.name}
+                                    {log.editRequested ? <span style={{ color: PRIMARY_PINK }}> · 수정 요청</span> : null}
+                                    {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
+                                  </div>
+                                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>
+                                    {getStatusLabel(log.status)} · {Number(log.coins || 0)}코인{log.startTimeActual ? ` · ${log.startTimeActual}${log.endTimeActual ? `~${log.endTimeActual}` : ''}` : ''}
+                                  </div>
+                                  {log.coinHistory && log.coinHistory.length > 0 && (
+                                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                      {log.coinHistory.map((h, i) => (
+                                        <span key={i}><span style={{ textDecoration: 'line-through' }}>{h.from}코인</span> → {h.to}코인 <span style={{ color: '#cbd5e1' }}>({h.changedAt})</span></span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </button>
+                                <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                                  {log.autoCompleted && (
+                                    <button onClick={() => grantAutoCompletedCoins(log)} style={{ border: 'none', background: '#fef9c3', color: '#b45309', padding: '0 8px', height: '32px', borderRadius: '10px', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>코인 적립</button>
+                                  )}
+                                  <button onClick={() => setLogEditDraft(isEditingThis ? null : { logId: log.id, name: log.name || '', coins: Number(log.coins || 0), status: log.status || '' })} style={{ border: 'none', background: isEditingThis ? '#dbe7ff' : '#f1f5f9', color: isEditingThis ? '#355eb5' : '#666', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Edit3 size={14} /></button>
+                                  <button onClick={() => deleteDoneLog(log.id)} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash size={15} /></button>
+                                </div>
+                              </div>
+                              {isEditingThis && (
+                                <div style={{ padding: '12px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
+                                  {log.type === 'class' ? (
+                                    <div style={{ marginBottom: '10px' }}>
+                                      <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
+                                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                        {CLASS_STATUSES.map(({ value, label, bg }) => (
+                                          <button key={value} onClick={() => setLogEditDraft(prev => ({ ...prev, status: value, coins: value === 'completed' ? Number(log.coins || 0) : 0 }))} style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === value ? bg : '#f1f5f9', color: logEditDraft.status === value ? 'white' : '#555' }}>{label}</button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ marginBottom: '10px' }}>
+                                      <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>완료 상태</div>
+                                      <button onClick={() => setLogEditDraft(prev => ({ ...prev, status: prev.status === '' ? log.status : '' }))} style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === '' ? '#94a3b8' : '#f1f5f9', color: logEditDraft.status === '' ? 'white' : '#555' }}>
+                                        {logEditDraft.status === '' ? '✓ 완료 취소됨' : '완료 취소하기'}
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                    <span style={{ fontSize: '12px', color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>과목명</span>
+                                    <input type="text" value={logEditDraft.name} onChange={(e) => setLogEditDraft(prev => ({ ...prev, name: e.target.value }))} style={{ flex: 1, padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', fontWeight: 700, fontSize: '13px' }} />
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                    <span style={{ fontSize: '12px', color: '#555', fontWeight: 700 }}>코인</span>
+                                    <input type="number" min="0" value={logEditDraft.coins} onChange={(e) => setLogEditDraft(prev => ({ ...prev, coins: e.target.value }))} style={{ width: '66px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', textAlign: 'center', fontWeight: 900, fontSize: '14px' }} />
+                                  </div>
+                                  {!logEditDraft.showSaveDialog ? (
+                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                      <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: true }))} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>저장</button>
+                                      <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>취소</button>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 700, textAlign: 'center' }}>저장 방식 선택</div>
+                                      <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                        <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>이번 기록만 저장</button>
+                                        <button onClick={async () => { await saveLogEdit(); openFullSettingEdit(log) }} style={{ flex: 1, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}>기본 설정도 변경</button>
+                                      </div>
+                                      <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: false }))} style={{ width: '100%', padding: '7px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>뒤로</button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {grpActivity.length === 0 && <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 학습/수업 기록이 없어요.</div>}
+                      </div>
+                    </section>
+                    <section style={{ border: '1px solid #ffe8b1', borderRadius: '14px', padding: '12px' }}>
+                      <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>코인</h3>
+                      <div style={{ display: 'grid', gap: '8px' }}>
+                        {grpGift.map((log) => (
+                          <div key={`grp-gift-${log.id}`} style={{ background: '#fffdf3', border: '1px solid #ffe8b1', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.name}</div>
+                              <div style={{ color: '#b45309', fontSize: '11px', marginTop: '3px' }}>+{Number(log.coins || 0)}코인</div>
+                            </div>
+                            <button onClick={() => deleteDoneLog(log.id)} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash size={15} /></button>
+                          </div>
+                        ))}
+                        {grpCoin.map((log) => (
+                          <div key={`grp-coin-${log.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{log.subjectName}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '3px' }}>{log.beforeCoins} → {log.afterCoins}</div>
+                            </div>
+                            <button onClick={() => deleteCoinLog(log.id)} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash size={15} /></button>
+                          </div>
+                        ))}
+                        {grpGift.length === 0 && grpCoin.length === 0 && <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 코인 기록이 없어요.</div>}
+                      </div>
+                    </section>
+                    <section style={{ border: '1px solid #dbeafe', borderRadius: '14px', padding: '12px' }}>
+                      <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#334155' }}>용돈기입장</h3>
+                      <div style={{ display: 'grid', gap: '8px' }}>
+                        {grpAllowance.map((entry) => (
+                          <div key={`grp-all-${entry.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 900, color: '#334155', fontSize: '13px' }}>{entry.title}</div>
+                              <div style={{ color: entry.type === 'income' ? '#166534' : '#991b1b', fontSize: '11px', marginTop: '3px' }}>{entry.type === 'income' ? '+' : '-'}{formatAmount(entry.amount)}원{entry.memo ? ` · ${entry.memo}` : ''}</div>
+                            </div>
+                            <button onClick={() => { if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(entry.id) }} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '32px', height: '32px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash size={15} /></button>
+                          </div>
+                        ))}
+                        {grpAllowance.length === 0 && <div style={{ fontSize: '12px', color: '#94a3b8' }}>이 날짜의 용돈 기록이 없어요.</div>}
+                      </div>
+                    </section>
+                  </div>
+                )
+              })() : (
               <div style={{ display: 'grid', gap: '10px' }}>
                 {(() => {
                   const activityLogs = doneLogs.map(l => ({ ...l, logType: 'activity' }))
                   const coinActivityLogs = coinChangeLogsForView.map(l => ({ ...l, id: l.id || `coin-${l.createdAt}`, logType: 'coin', name: l.subjectName, coins: l.afterCoins - l.beforeCoins, date: l.date }))
                   const moneyLogs = allowanceEntries.map(e => ({ ...e, logType: 'allowance', name: `[용돈] ${e.title}`, coins: e.amount, date: e.date }))
-
                   const combined = [...activityLogs, ...coinActivityLogs, ...moneyLogs]
                     .filter(log => {
-                      if (auditDateFilter === 'today' && log.date !== todayStr) return false
+                      if (auditDateFilter !== 'all' && log.date !== auditDateFilter) return false
                       if (auditLogFilter === 'all') return true
                       if (auditLogFilter === 'study') return log.logType === 'activity'
                       if (auditLogFilter === 'coin') return log.logType === 'coin'
@@ -3465,40 +3432,89 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       return true
                     })
                     .sort((a, b) => (b.timestamp || new Date(b.createdAt || b.date).getTime()) - (a.timestamp || new Date(a.createdAt || a.date).getTime()))
-
                   if (combined.length === 0) {
                     return <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontSize: '14px' }}>기록된 활동이 없어요.</div>
                   }
-
                   return combined.map(log => (
-                    <div key={`${log.logType}-${log.id}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px 15px', borderRadius: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 900, fontSize: '14px', color: '#333' }}>{log.name}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                          {log.date} {log.createdAtLabel ? `· ${log.createdAtLabel.split(' ')[1]}` : ''} · 
-                          <span style={{ marginLeft: '4px', color: log.logType === 'allowance' ? '#1d4ed8' : log.logType === 'coin' ? '#c96d00' : PRIMARY_PINK, fontWeight: 800 }}>
-                            {log.logType === 'coin' ? (log.coins > 0 ? `+${log.coins}` : log.coins) : log.coins} {log.logType === 'allowance' ? '원' : '코인'}
-                          </span>
+                    <div key={`${log.logType}-${log.id}`} style={{ background: '#f8fafc', border: logEditDraft?.logId === log.id ? '1.5px solid #7c9cff' : '1px solid #e2e8f0', borderRadius: '15px', overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 900, fontSize: '14px', color: '#333' }}>
+                            {log.name}
+                            {log.editRequested ? <span style={{ color: PRIMARY_PINK, fontSize: '12px', marginLeft: '4px' }}> · 수정 요청</span> : null}
+                            {log.autoCompleted ? <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '11px', marginLeft: '4px' }}>⏰ 자동완료</span> : null}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                            {log.date} ·
+                            <span style={{ marginLeft: '4px', color: log.logType === 'allowance' ? '#1d4ed8' : log.logType === 'coin' ? '#c96d00' : PRIMARY_PINK, fontWeight: 800 }}>
+                              {log.logType === 'coin' ? (log.coins > 0 ? `+${log.coins}` : log.coins) : log.coins} {log.logType === 'allowance' ? '원' : '코인'}
+                            </span>
+                          </div>
+                          {log.coinHistory && log.coinHistory.length > 0 && (
+                            <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                              {log.coinHistory.map((h, i) => (
+                                <span key={i}><span style={{ textDecoration: 'line-through' }}>{h.from}코인</span> → {h.to}코인 <span style={{ color: '#cbd5e1' }}>({h.changedAt})</span></span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
+                          {log.autoCompleted && log.logType === 'activity' && (
+                            <button onClick={() => grantAutoCompletedCoins(log)} style={{ border: 'none', background: '#fef9c3', color: '#b45309', padding: '0 8px', height: '32px', borderRadius: '10px', fontSize: '11px', fontWeight: 900, cursor: 'pointer', whiteSpace: 'nowrap' }}>코인 적립</button>
+                          )}
+                          {log.logType === 'activity' && (
+                            <button onClick={() => setLogEditDraft(logEditDraft?.logId === log.id ? null : { logId: log.id, name: log.name || '', coins: Number(log.coins || 0), status: log.status || '' })} style={{ border: 'none', background: logEditDraft?.logId === log.id ? '#dbe7ff' : '#f1f5f9', color: logEditDraft?.logId === log.id ? '#355eb5' : '#666', width: '34px', height: '34px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Edit3 size={14} /></button>
+                          )}
+                          <button onClick={() => { if (log.logType === 'allowance') { if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(log.id) } else if (log.logType === 'coin') { deleteCoinLog(log.id) } else { deleteDoneLog(log.id) } }} style={{ border: 'none', background: '#fee2e2', color: '#ef4444', width: '34px', height: '34px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Trash size={16} /></button>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => {
-                          if (log.logType === 'allowance') {
-                            if (window.confirm('이 용돈 내역을 삭제할까요?')) handleDeleteAllowance(log.id)
-                          } else if (log.logType === 'coin') {
-                            deleteCoinLog(log.id)
-                          } else {
-                            deleteDoneLog(log.id)
-                          }
-                        }}
-                        style={{ border: 'none', background: '#fee2e2', color: '#ef4444', padding: '8px', borderRadius: '10px', cursor: 'pointer' }}
-                      >
-                        <Trash size={16} />
-                      </button>
+                      {logEditDraft?.logId === log.id && (
+                        <div style={{ padding: '12px 15px', borderTop: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: '10px' }}>
+                          {log.type === 'class' ? (
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>상태 변경</div>
+                              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {CLASS_STATUSES.map(({ value, label, bg }) => (
+                                  <button key={value} onClick={() => setLogEditDraft(prev => ({ ...prev, status: value, coins: value === 'completed' ? Number(log.coins || 0) : 0 }))} style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === value ? bg : '#f1f5f9', color: logEditDraft.status === value ? 'white' : '#555' }}>{label}</button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 700 }}>완료 상태</div>
+                              <button onClick={() => setLogEditDraft(prev => ({ ...prev, status: prev.status === '' ? log.status : '' }))} style={{ padding: '5px 9px', borderRadius: '7px', border: 'none', fontSize: '11px', fontWeight: 900, cursor: 'pointer', background: logEditDraft.status === '' ? '#94a3b8' : '#f1f5f9', color: logEditDraft.status === '' ? 'white' : '#555' }}>{logEditDraft.status === '' ? '✓ 완료 취소됨' : '완료 취소하기'}</button>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>과목명</span>
+                            <input type="text" value={logEditDraft.name} onChange={(e) => setLogEditDraft(prev => ({ ...prev, name: e.target.value }))} style={{ flex: 1, padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', fontWeight: 700, fontSize: '13px' }} />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '12px', color: '#555', fontWeight: 700 }}>코인</span>
+                            <input type="number" min="0" value={logEditDraft.coins} onChange={(e) => setLogEditDraft(prev => ({ ...prev, coins: e.target.value }))} style={{ width: '66px', padding: '5px 8px', borderRadius: '8px', border: '1px solid #c7d7ff', textAlign: 'center', fontWeight: 900, fontSize: '14px' }} />
+                          </div>
+                          {!logEditDraft.showSaveDialog ? (
+                            <div style={{ display: 'flex', gap: '5px' }}>
+                              <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: true }))} className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '12px' }}>저장</button>
+                              <button onClick={() => setLogEditDraft(null)} style={{ flex: 1, padding: '8px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>취소</button>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px', fontWeight: 700, textAlign: 'center' }}>저장 방식 선택</div>
+                              <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
+                                <button onClick={saveLogEdit} className="btn-primary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>이번 기록만 저장</button>
+                                <button onClick={async () => { await saveLogEdit(); openFullSettingEdit(log) }} style={{ flex: 1, padding: '8px', border: '1px solid #7c9cff', background: 'white', color: '#355eb5', borderRadius: '10px', fontWeight: 900, fontSize: '12px', cursor: 'pointer' }}>기본 설정도 변경</button>
+                              </div>
+                              <button onClick={() => setLogEditDraft(prev => ({ ...prev, showSaveDialog: false }))} style={{ width: '100%', padding: '7px', border: '1px solid #ddd', background: 'white', borderRadius: '10px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}>뒤로</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))
                 })()}
               </div>
+              )}
             </div>
           </div>
         )}
