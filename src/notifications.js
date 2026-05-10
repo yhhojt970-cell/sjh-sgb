@@ -177,3 +177,52 @@ export const showForegroundPushNotification = (payload) => {
     // Some mobile browsers only display notifications from the service worker.
   }
 }
+
+/**
+ * 기본 알림 설정 반환
+ */
+export const getDefaultNotificationSettings = () => ({
+  taskCreated: true,
+  taskUpdated: true,
+  taskDeleted: false,
+  taskCompleted: true,
+  allowanceCreated: true
+})
+
+/**
+ * 사용자 알림 설정 조회
+ */
+export const getNotificationSettings = async (db, householdId, userId) => {
+  if (!db || !householdId || !userId) return getDefaultNotificationSettings()
+
+  try {
+    const { getDoc, doc } = await import('firebase/firestore')
+    const docRef = doc(db, 'households', householdId, 'users', userId, 'notificationSettings', 'preferences')
+    const snapshot = await getDoc(docRef)
+
+    if (snapshot.exists()) {
+      return { ...getDefaultNotificationSettings(), ...snapshot.data() }
+    }
+  } catch (error) {
+    console.error('알림 설정 조회 실패:', error)
+  }
+
+  return getDefaultNotificationSettings()
+}
+
+/**
+ * 사용자 알림 설정 저장
+ */
+export const saveNotificationSettings = async (db, householdId, userId, settings) => {
+  if (!db || !householdId || !userId) return false
+
+  try {
+    const { setDoc, doc, serverTimestamp } = await import('firebase/firestore')
+    const docRef = doc(db, 'households', householdId, 'users', userId, 'notificationSettings', 'preferences')
+    await setDoc(docRef, { ...settings, updatedAt: serverTimestamp() }, { merge: true })
+    return true
+  } catch (error) {
+    console.error('알림 설정 저장 실패:', error)
+    return false
+  }
+}

@@ -27,7 +27,7 @@ import { ko } from 'date-fns/locale'
 import { updatePassword } from 'firebase/auth'
 import { arrayUnion, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { auth } from './firebase'
-import { getPushNotificationStatus, listenForForegroundPush, registerPushDevice, showForegroundPushNotification } from './notifications'
+import { getPushNotificationStatus, listenForForegroundPush, registerPushDevice, showForegroundPushNotification, getNotificationSettings, saveNotificationSettings } from './notifications'
 
 const PRIMARY_PINK = '#ff4d6d'
 const LIGHT_PINK = '#fff0f3'
@@ -281,6 +281,7 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showPalette, setShowPalette] = useState(false)
   const [showClassManager, setShowClassManager] = useState(false)
   const [fixedClassCoinDialog, setFixedClassCoinDialog] = useState(null) // { taskId, kidId, newCoins, currentCoins }
+  const [postponeDialog, setPostponeDialog] = useState(null) // { existingTask, newTask, kidId }
   const [showCoinLedger, setShowCoinLedger] = useState(false)
   const [showAllAllowanceEntries, setShowAllAllowanceEntries] = useState(false)
   const [showAllCoinEntries, setShowAllCoinEntries] = useState(false)
@@ -288,6 +289,10 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [showDailyLog, setShowDailyLog] = useState(false)
   const [showTotalAuditLog, setShowTotalAuditLog] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [showAddSpecialEvent, setShowAddSpecialEvent] = useState(false)
+  const [specialEventName, setSpecialEventName] = useState('')
+  const [selectedKidsForEvent, setSelectedKidsForEvent] = useState([])
+  const [specialEventHour, setSpecialEventHour] = useState(0)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [viewMonth, setViewMonth] = useState(new Date())
   const [expandedCoinGroups, setExpandedCoinGroups] = useState({})
@@ -304,6 +309,14 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const [replyText, setReplyText] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [notificationSettings, setNotificationSettings] = useState({
+    taskCreated: true,
+    taskUpdated: true,
+    taskDeleted: false,
+    taskCompleted: true,
+    allowanceCreated: true
+  })
+  const [notificationSettingsBusy, setNotificationSettingsBusy] = useState(false)
   const [newAllowance, setNewAllowance] = useState({
     date: format(new Date(), 'yyyy-MM-dd'),
     type: 'income',
@@ -352,6 +365,34 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     setPushStatus(status)
   }
 
+  const loadNotificationSettings = async () => {
+    if (!isCloud || !user) return
+    setNotificationSettingsBusy(true)
+    try {
+      const settings = await getNotificationSettings(cloud.db, cloud.householdId, activeKidId || user.id)
+      setNotificationSettings(settings)
+    } catch (error) {
+      console.error('알림 설정 로드 실패:', error)
+    } finally {
+      setNotificationSettingsBusy(false)
+    }
+  }
+
+  const saveNotificationSettingsFunc = async (newSettings) => {
+    if (!isCloud || !user) return
+    setNotificationSettingsBusy(true)
+    try {
+      const success = await saveNotificationSettings(cloud.db, cloud.householdId, activeKidId || user.id, newSettings)
+      if (success) {
+        setNotificationSettings(newSettings)
+      }
+    } catch (error) {
+      console.error('알림 설정 저장 실패:', error)
+    } finally {
+      setNotificationSettingsBusy(false)
+    }
+  }
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900)
     window.addEventListener('resize', onResize)
@@ -392,6 +433,12 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
       unsubscribe()
     }
   }, [isCloud, pushStatus.permission, pushStatus.tokenHash])
+
+  useEffect(() => {
+    if (showSettings) {
+      loadNotificationSettings()
+    }
+  }, [showSettings, activeKidId])
 
   useEffect(() => {
     if (isAdmin) {
@@ -578,6 +625,62 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
   const mergeMetaDoc = async (docId, payload) => {
     if (!isCloud) return
     await setDoc(doc(cloud.db, 'households', cloud.householdId, 'meta', docId), payload, { merge: true })
+  }
+
+  /**
+   * 알림 발송 함수 - 서버에 요청
+   */
+  const sendNotification = async ({ type, kidId, title, body, taskName }) => {
+    if (!isCloud) return
+
+    try {
+      // Cloud Functions에서 처리할 수 있도록 notification 로그 저장
+      const logId = `notif-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const now = new Date()
+      
+      await mergeMetaDoc('notificationQueue', {
+        queue: arrayUnion({
+          id: logId,
+          type, // 'task-created', 'task-updated', 'task-deleted', 'task-completed', 'allowance-created'
+          kidId,
+          title,
+          body,
+          taskName: taskName || '',
+          date: format(now, 'yyyy-MM-dd'),
+          createdAt: now.toISOString(),
+          processed: false
+        }),
+        updatedAt: serverTimestamp()
+      })
+    } catch (error) {
+      console.error('알림 발송 실패:', error)
+    }
+  }
+
+  /**
+   * 사용자의 알림 설정 확인 후 필요시 알림 발송
+   */
+  const checkAndSendNotification = async ({ type, kidId, title, body, taskName }) => {
+    if (!isCloud || !user) return
+
+    try {
+      // 해당 아이의 알림 설정 확인
+      const settings = await getNotificationSettings(cloud.db, cloud.householdId, kidId)
+      const settingsMap = {
+        'task-created': settings.taskCreated,
+        'task-updated': settings.taskUpdated,
+        'task-deleted': settings.taskDeleted,
+        'task-completed': settings.taskCompleted,
+        'allowance-created': settings.allowanceCreated
+      }
+
+      // 설정이 활성화되어 있으면 알림 발송
+      if (settingsMap[type]) {
+        await sendNotification({ type, kidId, title, body, taskName })
+      }
+    } catch (error) {
+      console.error('알림 설정 확인 중 오류:', error)
+    }
   }
 
   const giftCoins = async (amount, memo = '') => {
@@ -1080,6 +1183,17 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
     await persistKidState({ allowanceEntries: next, doneLogs: nextLogs })
     setNewAllowance((prev) => ({ ...prev, amount: '', title: '', memo: '' }))
+    
+    // 용돈기입장 작성 알림
+    if (!isAdmin) {
+      await checkAndSendNotification({
+        type: 'allowance-created',
+        kidId: activeKidId,
+        title: '용돈기입장을 작성했어요!',
+        body: `${title} (${newAllowance.type === 'expense' ? '-' : '+'}${amount.toLocaleString('ko-KR')})`,
+        taskName: title
+      })
+    }
   }
 
   const handleDeleteAllowance = async (id) => {
@@ -1198,6 +1312,67 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     })
   }
 
+  const handleAddSpecialEvent = async () => {
+    const name = specialEventName.trim()
+    if (!name || selectedKidsForEvent.length === 0) return
+
+    const startTime = `${String(specialEventHour).padStart(2, '0')}:00`
+    const duration = 60
+    const expectedEndTime = buildExpectedEndTime(startTime, duration)
+
+    for (const kidId of selectedKidsForEvent) {
+      const eventTask = {
+        id: `event-${kidId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        type: 'event',
+        startTime,
+        duration,
+        expectedEndTime,
+        color: '#ff4d6d',
+        coins: 0,
+        date: todayStr,
+        completed: false,
+        memo: ''
+      }
+
+      if (!isCloud) {
+        const currentTasks = kidId === activeKidId ? tasks : (allTasksByKid[kidId] || [])
+        const nextTasks = [...currentTasks, eventTask]
+        setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+        if (kidId === activeKidId) setTasks(nextTasks)
+        continue
+      }
+
+      const targetDocId = await getKidDocIdForWrite(kidId)
+      const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+      const kidData = snap.exists() ? snap.data() : {}
+      const currentTasks = Array.isArray(kidData?.tasks) ? kidData.tasks : []
+      const nextTasks = [...currentTasks, eventTask]
+
+      await setDoc(
+        doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+        { tasks: nextTasks, updatedAt: serverTimestamp() },
+        { merge: true }
+      )
+
+      setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+      if (kidId === activeKidId) setTasks(nextTasks)
+      
+      // 특별 일정 추가 알림
+      await checkAndSendNotification({
+        type: 'task-created',
+        kidId,
+        title: `새 일정: ${name}`,
+        body: `오늘 ${specialEventHour}시에 있어요!`,
+        taskName: name
+      })
+    }
+
+    setSpecialEventName('')
+    setSelectedKidsForEvent(kidsList.slice())
+    setShowAddSpecialEvent(false)
+  }
+
   useEffect(() => {
     if (!isAdmin || !showFamilyManager || unreadRepliesForAdmin === 0 || !isCloud) return
     const run = async () => {
@@ -1285,7 +1460,29 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     }
 
     for (const [kidId, items] of byKid.entries()) {
-      await appendFixedClassesForKid(kidId, items)
+      const existingTasks = (allTasksByKid[kidId] || []).filter(t => t.type === 'class')
+      const validItems = []
+      const conflicts = []
+
+      items.forEach((task) => {
+        const conflictingTask = existingTasks.find(existing =>
+          existing.name === task.name &&
+          existing.weekdays.some(w => task.weekdays.includes(w))
+        )
+        if (conflictingTask) {
+          conflicts.push(`${task.name} (${formatWeekdays(task)} ${task.startTime}) - 기존: ${formatWeekdays(conflictingTask)} ${conflictingTask.startTime}`)
+        } else {
+          validItems.push(task)
+        }
+      })
+
+      if (validItems.length > 0) {
+        await appendFixedClassesForKid(kidId, validItems)
+      }
+
+      if (conflicts.length > 0) {
+        alert(`${getFullName(kidId)}의 중복 수업:\n${conflicts.join('\n')}\n\n중복 수업은 건너뛰었어요.`)
+      }
     }
 
     setBulkInput('')
@@ -1298,6 +1495,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
     const task = createFixedClassTask(manualClass)
     if (!targetKidId || !task) {
       alert('아이, 요일, 과목명, 시작시간, 수업시간을 확인해 주세요.')
+      return
+    }
+
+    // 중복 체크: 같은 아이, 같은 과목명, 겹치는 요일
+    const existingTasks = (allTasksByKid[targetKidId] || []).filter(t => t.type === 'class')
+    const conflictingTask = existingTasks.find(existing =>
+      existing.name === task.name &&
+      existing.weekdays.some(w => task.weekdays.includes(w))
+    )
+
+    if (conflictingTask) {
+      setPostponeDialog({ existingTask: conflictingTask, newTask: task, kidId: targetKidId })
       return
     }
 
@@ -2125,6 +2334,18 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                     setDoneLogs(nextLogs)
                     if (nextTasks !== tasks) setTasks(nextTasks)
                     await persistKidState({ doneLogs: nextLogs, tasks: nextTasks })
+                    
+                    // 일정 완료 시 알림 발송
+                    if (!isRemoval && !existingLog && (updates.status === 'completed' || updates.completed === true)) {
+                      await checkAndSendNotification({
+                        type: 'task-completed',
+                        kidId: activeKidId,
+                        title: `${task.name} 완료했어요!`,
+                        body: task.name,
+                        taskName: task.name
+                      })
+                    }
+                    
                     return
                   }
                 }
@@ -2169,31 +2390,30 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                 await applyDoneLogCoinUpdate(next)
                 if (_doneLogCoinsUpdate === undefined) persistKidState({ tasks: next })
               }}
-              onDeleteTask={(id) => {
+              onDeleteTask={async (id) => {
+                const deletedTask = tasks.find((t) => String(t.id) === String(id))
                 const next = tasks.filter((t) => String(t.id) !== String(id))
                 const nextLogs = doneLogs.filter((log) => String(log.taskId) !== String(id))
                 setTasks(next)
                 setDoneLogs(nextLogs)
-                persistKidState({ tasks: next, doneLogs: nextLogs })
+                await persistKidState({ tasks: next, doneLogs: nextLogs })
+                
+                // 일정 삭제 알림 (엄마만 받음)
+                if (deletedTask && isAdmin) {
+                  await checkAndSendNotification({
+                    type: 'task-deleted',
+                    kidId: activeKidId,
+                    title: `일정 삭제: ${deletedTask.name}`,
+                    body: deletedTask.name,
+                    taskName: deletedTask.name
+                  })
+                }
               }}
               onAddSpecialEvent={(hour) => {
-                const name = prompt('특별 일정 이름')
-                if (!name) return
-                const startTime = `${String(hour).padStart(2, '0')}:00`
-                const nextTask = {
-                  id: Date.now(),
-                  name,
-                  startTime,
-                  expectedEndTime: buildExpectedEndTime(startTime, 30),
-                  duration: 30,
-                  type: 'event',
-                  icon: 'Star',
-                  completed: false,
-                  date: todayStr
-                }
-                const next = [...tasks, nextTask]
-                setTasks(next)
-                persistKidState({ tasks: next })
+                setSpecialEventHour(hour)
+                setSpecialEventName('')
+                setSelectedKidsForEvent(kidsList.slice())
+                setShowAddSpecialEvent(true)
               }}
             />
           </div>
@@ -2479,6 +2699,49 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
           </div>
         )}
 
+        {showAddSpecialEvent && (
+          <div className="modal-overlay" onClick={() => setShowAddSpecialEvent(false)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '20px', maxWidth: '400px', width: '90%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: PRIMARY_PINK }}>특별일정 추가</h2>
+                <button onClick={() => setShowAddSpecialEvent(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+              </div>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>일정 이름</div>
+                  <input className="input-field" value={specialEventName} onChange={(e) => setSpecialEventName(e.target.value)} placeholder="예: 생일 파티" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>시간: {specialEventHour}시</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>적용할 아이</div>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    {kidsList.map((kidId) => (
+                      <div
+                        key={kidId}
+                        onClick={() => {
+                          if (selectedKidsForEvent.includes(kidId)) {
+                            setSelectedKidsForEvent(prev => prev.filter(id => id !== kidId))
+                          } else {
+                            setSelectedKidsForEvent(prev => [...prev, kidId])
+                          }
+                        }}
+                        style={{ cursor: 'pointer', fontSize: '16px', fontWeight: 'bold', color: selectedKidsForEvent.includes(kidId) ? PRIMARY_PINK : '#ccc' }}
+                      >
+                        {selectedKidsForEvent.includes(kidId) ? '☑' : '☐'} {getFullName(kidId)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={handleAddSpecialEvent} className="btn-primary" style={{ width: '100%', padding: '12px' }}>
+                  추가하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {editingClassInfo && isAdmin && (
           <div className="modal-overlay" onClick={() => setEditingClassInfo(null)}>
             <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '20px', maxWidth: '420px', width: '94%', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
@@ -2568,6 +2831,119 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {postponeDialog && isAdmin && (
+          <div className="modal-overlay" onClick={() => setPostponeDialog(null)}>
+            <div className="modal-content glass" onClick={(e) => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', padding: '20px', maxWidth: '420px', width: '94%', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: PRIMARY_PINK }}>중복 수업 등록</h2>
+                <button onClick={() => setPostponeDialog(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><CloseIcon /></button>
+              </div>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <div style={{ fontSize: '14px', color: '#333' }}>
+                  <strong>{postponeDialog.existingTask.name}</strong> 수업이 이미 <strong>{formatWeekdays(postponeDialog.existingTask)} {postponeDialog.existingTask.startTime}</strong>에 등록되어 있어요.
+                  <br />
+                  새로 <strong>{formatWeekdays(postponeDialog.newTask)} {postponeDialog.newTask.startTime}</strong>에 등록하려고 합니다.
+                </div>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  <button
+                    onClick={async () => {
+                      const { existingTask, newTask, kidId } = postponeDialog
+                      // 연기: 기존 task memo 업데이트
+                      const postponeMemo = `연기: ${formatWeekdays(existingTask)} ${existingTask.startTime} → ${formatWeekdays(newTask)} ${newTask.startTime}`
+                      const updatedExisting = { ...existingTask, memo: existingTask.memo ? `${existingTask.memo}\n${postponeMemo}` : postponeMemo }
+                      // 기존 task 업데이트
+                      await updateFixedClassTask(kidId, existingTask.id, { memo: updatedExisting.memo }, 'all')
+                      // 새 task 등록
+                      await appendFixedClassesForKid(kidId, [newTask])
+                      // 로그 기록
+                      const logEntry = {
+                        id: `postpone-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        taskId: existingTask.id,
+                        name: existingTask.name,
+                        type: 'class',
+                        date: todayStr,
+                        status: 'postponed',
+                        coins: 0,
+                        timestamp: Date.now(),
+                        memo: postponeMemo
+                      }
+                      const nextLogs = [...doneLogs, logEntry]
+                      setDoneLogs(nextLogs)
+                      await persistKidState({ doneLogs: nextLogs })
+                      // 상태 초기화
+                      setManualClass((prev) => ({
+                        ...prev,
+                        kidId,
+                        name: '',
+                        memo: '',
+                        coins: 0,
+                        startDate: '',
+                        endDate: ''
+                      }))
+                      setClassAddStatus(`${getFullName(kidId)} 고정수업을 연기하고 새로 등록했어요.`)
+                      setPostponeDialog(null)
+                    }}
+                    className="btn-primary"
+                    style={{ padding: '12px', fontSize: '14px' }}
+                  >
+                    연기하고 새로 등록
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const { existingTask, newTask, kidId } = postponeDialog
+                      // 기존 task 삭제
+                      const targetDocId = await getKidDocIdForWrite(kidId)
+                      const snap = await getDoc(doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId))
+                      const kidData = snap.exists() ? snap.data() : {}
+                      const currentTasks = Array.isArray(kidData?.tasks) ? kidData.tasks : []
+                      const nextTasks = currentTasks.filter(t => t.id !== existingTask.id)
+                      await setDoc(
+                        doc(cloud.db, 'households', cloud.householdId, 'kids', targetDocId),
+                        { tasks: nextTasks, updatedAt: serverTimestamp() },
+                        { merge: true }
+                      )
+                      setAllTasksByKid((prev) => ({ ...prev, [kidId]: nextTasks }))
+                      if (kidId === activeKidId) setTasks(nextTasks)
+                      // 새 task 등록
+                      await appendFixedClassesForKid(kidId, [newTask])
+                      // 로그 기록
+                      const logEntry = {
+                        id: `replace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        taskId: existingTask.id,
+                        name: existingTask.name,
+                        type: 'class',
+                        date: todayStr,
+                        status: 'replaced',
+                        coins: 0,
+                        timestamp: Date.now(),
+                        memo: `삭제 후 ${formatWeekdays(newTask)} ${newTask.startTime}으로 재등록`
+                      }
+                      const nextLogs = [...doneLogs, logEntry]
+                      setDoneLogs(nextLogs)
+                      await persistKidState({ doneLogs: nextLogs })
+                      // 상태 초기화
+                      setManualClass((prev) => ({
+                        ...prev,
+                        kidId,
+                        name: '',
+                        memo: '',
+                        coins: 0,
+                        startDate: '',
+                        endDate: ''
+                      }))
+                      setClassAddStatus(`${getFullName(kidId)} 고정수업을 삭제하고 새로 등록했어요.`)
+                      setPostponeDialog(null)
+                    }}
+                    style={{ padding: '12px', fontSize: '14px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
+                  >
+                    기존 삭제하고 새로 등록
+                  </button>
                 </div>
               </div>
             </div>
@@ -3166,6 +3542,52 @@ function Dashboard({ user = {}, onLogout, allUsers = {}, cloud = {} }) {
                   </div>
                 ) : null}
               </div>
+              
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Bell size={16} color={PRIMARY_PINK} />
+                  알림 설정
+                </div>
+                
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {[
+                    { key: 'taskCreated', label: '새 일정 등록', description: '새 일정이 추가되었을 때' },
+                    { key: 'taskUpdated', label: '일정 수정', description: '등록된 일정이 수정되었을 때' },
+                    { key: 'taskDeleted', label: '일정 삭제', description: '일정이 삭제되었을 때' },
+                    { key: 'taskCompleted', label: '일정 완료', description: '일정을 완료했을 때' },
+                    { key: 'allowanceCreated', label: '용돈기입장 작성', description: '용돈기입장이 작성되었을 때' }
+                  ].map(({ key, label, description }) => (
+                    <div key={key} style={{ 
+                      background: 'white', 
+                      borderRadius: '10px', 
+                      padding: '10px', 
+                      border: '1px solid #e5e7eb',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937', marginBottom: '2px' }}>{label}</div>
+                        <div style={{ fontSize: '11px', color: '#6b7280' }}>{description}</div>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={notificationSettings[key] || false}
+                          onChange={(e) => {
+                            const newSettings = { ...notificationSettings, [key]: e.target.checked }
+                            setNotificationSettings(newSettings)
+                            saveNotificationSettingsFunc(newSettings)
+                          }}
+                          disabled={notificationSettingsBusy}
+                          style={{ marginRight: '8px', cursor: 'pointer', width: '18px', height: '18px' }}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 900, marginBottom: '8px' }}>비밀번호 변경</div>
                 <input className="input-field" type="password" placeholder="새 비밀번호 (6자 이상)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} style={{ marginBottom: '8px' }} />
